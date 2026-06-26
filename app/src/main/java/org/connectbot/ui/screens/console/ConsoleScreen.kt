@@ -140,7 +140,7 @@ import org.connectbot.ui.components.AuthBannerDialog
 import org.connectbot.ui.components.FloatingTextInputDialog
 import org.connectbot.ui.components.InlinePrompt
 import org.connectbot.ui.components.ResizeDialog
-import org.connectbot.ui.components.TERMINAL_KEYBOARD_HEIGHT_DP
+import org.connectbot.ui.components.TERMINAL_KEYBOARD_TOTAL_HEIGHT_DP
 import org.connectbot.ui.components.TerminalKeyboard
 import org.connectbot.ui.components.UrlScanDialog
 import org.connectbot.ui.theme.terminal
@@ -385,7 +385,7 @@ private fun ConsoleTerminalPage(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(
-                    bottom = if (keyboardAlwaysVisible) TERMINAL_KEYBOARD_HEIGHT_DP.dp else 0.dp,
+                    bottom = if (keyboardAlwaysVisible) TERMINAL_KEYBOARD_TOTAL_HEIGHT_DP.dp else 0.dp,
                 )
                 .then(terminalModifier)
                 .testTag("terminal"),
