@@ -140,9 +140,10 @@ import org.connectbot.ui.components.AuthBannerDialog
 import org.connectbot.ui.components.FloatingTextInputDialog
 import org.connectbot.ui.components.InlinePrompt
 import org.connectbot.ui.components.ResizeDialog
-import org.connectbot.ui.components.TERMINAL_KEYBOARD_TOTAL_HEIGHT_DP
+import org.connectbot.ui.components.TERMINAL_KEYBOARD_HEIGHT_DP
 import org.connectbot.ui.components.TerminalKeyboard
 import org.connectbot.ui.components.UrlScanDialog
+import org.connectbot.ui.components.specialKeyboardRows
 import org.connectbot.ui.theme.terminal
 import org.connectbot.util.PreferenceConstants
 import org.connectbot.util.UrlUtils
@@ -369,6 +370,10 @@ private fun ConsoleTerminalPage(
         val coroutineScope = rememberCoroutineScope()
         val fontSize by bridge.fontSizeFlow.collectAsState()
         val delKeyMode by bridge.delKeyModeFlow.collectAsState()
+        val context = LocalContext.current
+        val keyboardRows = remember {
+            specialKeyboardRows(PreferenceManager.getDefaultSharedPreferences(context))
+        }
 
         LaunchedEffect(fontResult.loadFailed, fontResult.isLoading) {
             if (fontResult.loadFailed && !fontResult.isLoading) {
@@ -385,7 +390,7 @@ private fun ConsoleTerminalPage(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(
-                    bottom = if (keyboardAlwaysVisible) TERMINAL_KEYBOARD_TOTAL_HEIGHT_DP.dp else 0.dp,
+                    bottom = if (keyboardAlwaysVisible) (keyboardRows * TERMINAL_KEYBOARD_HEIGHT_DP).dp else 0.dp,
                 )
                 .then(terminalModifier)
                 .testTag("terminal"),

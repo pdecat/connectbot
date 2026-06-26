@@ -17,6 +17,7 @@
 
 package org.connectbot.ui.components
 
+import android.content.SharedPreferences
 import android.view.HapticFeedbackConstants
 import android.view.ViewConfiguration
 import androidx.compose.animation.core.tween
@@ -27,10 +28,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
@@ -85,16 +88,6 @@ private const val UI_OPACITY = 0.5f
 const val TERMINAL_KEYBOARD_HEIGHT_DP = 30
 
 /**
- * Number of key rows in the virtual keyboard.
- */
-private const val TERMINAL_KEYBOARD_ROW_COUNT = 2
-
-/**
- * Total height of the virtual keyboard in dp (all key rows stacked).
- */
-const val TERMINAL_KEYBOARD_TOTAL_HEIGHT_DP = TERMINAL_KEYBOARD_HEIGHT_DP * TERMINAL_KEYBOARD_ROW_COUNT
-
-/**
  * Width of the virtual keyboard keys in dp.
  */
 private const val TERMINAL_KEYBOARD_WIDTH_DP = 45
@@ -105,9 +98,35 @@ private const val TERMINAL_KEYBOARD_WIDTH_DP = 45
 private const val TERMINAL_KEYBOARD_CONTENT_SIZE_DP = 20
 
 /**
+ * Supported range and default for the number of special-key rows.
+ */
+const val TERMINAL_KEYBOARD_MIN_ROWS = 1
+const val TERMINAL_KEYBOARD_MAX_ROWS = 3
+const val TERMINAL_KEYBOARD_DEFAULT_ROWS = 2
+
+/**
+ * Reads the user-configured number of special-key rows, clamped to the supported range.
+ */
+fun specialKeyboardRows(prefs: SharedPreferences): Int {
+    val value = prefs.getString(PreferenceConstants.SPECIAL_KEY_ROWS, PreferenceConstants.SPECIAL_KEY_ROWS_DEFAULT)
+    return (value?.toIntOrNull() ?: TERMINAL_KEYBOARD_DEFAULT_ROWS)
+        .coerceIn(TERMINAL_KEYBOARD_MIN_ROWS, TERMINAL_KEYBOARD_MAX_ROWS)
+}
+
+/**
+ * Splits a list into [rows] near-equal contiguous groups (the earlier rows are the smaller
+ * ones when the split is uneven), preserving order.
+ */
+private fun <T> List<T>.splitIntoRows(rows: Int): List<List<T>> {
+    if (rows <= 1) return listOf(this)
+    return (0 until rows).map { i -> subList(size * i / rows, size * (i + 1) / rows) }
+}
+
+/**
  * Virtual keyboard with terminal special keys (Ctrl, Esc, arrows, function keys, etc.)
- * Positioned at the bottom of the console screen with the keys laid out on two rows
- * so they fit without horizontal scrolling (still scrollable on very narrow screens).
+ * Positioned at the bottom of the console screen with the keys laid out on a configurable
+ * number of rows (see [PreferenceConstants.SPECIAL_KEY_ROWS]) so they fit without horizontal
+ * scrolling (still scrollable on very narrow screens).
  * Auto-hide timer is managed by parent ConsoleScreen
  */
 @Composable
@@ -129,6 +148,7 @@ fun TerminalKeyboard(
     val bumpyArrows by remember {
         mutableStateOf(prefs.getBoolean(PreferenceConstants.BUMPY_ARROWS, false))
     }
+    val rows by remember { mutableStateOf(specialKeyboardRows(prefs)) }
 
     TerminalKeyboardContent(
         modifierState = modifierState,
@@ -156,6 +176,7 @@ fun TerminalKeyboard(
         imeVisible = imeVisible,
         playAnimation = playAnimation,
         bumpyArrows = bumpyArrows,
+        rows = rows,
         modifier = modifier,
     )
 }
@@ -180,10 +201,12 @@ internal fun TerminalKeyboardContent(
     playAnimation: Boolean,
     bumpyArrows: Boolean,
     modifier: Modifier = Modifier,
+    rows: Int = TERMINAL_KEYBOARD_DEFAULT_ROWS,
 ) {
     val scrollState = rememberScrollState()
     val currentOnScrollInProgressChange by rememberUpdatedState(onScrollInProgressChange)
     val view = LocalView.current
+    val rowCount = rows.coerceIn(TERMINAL_KEYBOARD_MIN_ROWS, TERMINAL_KEYBOARD_MAX_ROWS)
 
     if (bumpyArrows) {
         view.isHapticFeedbackEnabled = true
@@ -215,6 +238,233 @@ internal fun TerminalKeyboardContent(
         }
     }
 
+    // The ordered set of special keys; split across the configured number of rows below.
+    val keys: List<@Composable () -> Unit> = buildList {
+        // Ctrl key (sticky modifier)
+        add {
+            ModifierKeyButton(
+                text = stringResource(R.string.button_key_ctrl),
+                contentDescription = stringResource(R.string.image_description_toggle_control_character),
+                modifierLevel = modifierState.ctrlState,
+                onClick = onCtrlPress,
+            )
+        }
+        // Esc key
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_esc),
+                contentDescription = stringResource(R.string.image_description_send_escape_character),
+                onClick = onEscPress,
+            )
+        }
+        // Tab key
+        add {
+            KeyButton(
+                text = "⇥", // Tab symbol
+                contentDescription = stringResource(R.string.image_description_send_tab_character),
+                onClick = onTabPress,
+            )
+        }
+        // Arrow keys (repeatable)
+        add {
+            RepeatableKeyButton(
+                icon = Icons.Default.KeyboardArrowUp,
+                contentDescription = stringResource(R.string.image_description_up),
+                onPress = {
+                    onKeyPress(VTermKey.UP)
+                    if (bumpyArrows) {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    }
+                },
+            )
+        }
+        add {
+            RepeatableKeyButton(
+                icon = Icons.Default.KeyboardArrowDown,
+                contentDescription = stringResource(R.string.image_description_down),
+                onPress = {
+                    onKeyPress(VTermKey.DOWN)
+                    if (bumpyArrows) {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    }
+                },
+            )
+        }
+        add {
+            RepeatableKeyButton(
+                icon = Icons.Default.KeyboardArrowLeft,
+                contentDescription = stringResource(R.string.image_description_left),
+                onPress = {
+                    onKeyPress(VTermKey.LEFT)
+                    if (bumpyArrows) {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    }
+                },
+            )
+        }
+        add {
+            RepeatableKeyButton(
+                icon = Icons.Default.KeyboardArrowRight,
+                contentDescription = stringResource(R.string.image_description_right),
+                onPress = {
+                    onKeyPress(VTermKey.RIGHT)
+                    if (bumpyArrows) {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    }
+                },
+            )
+        }
+        // Home/End
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_home),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.HOME) },
+            )
+        }
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_end),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.END) },
+            )
+        }
+        // Page Up/Down
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_pgup),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.PAGEUP) },
+            )
+        }
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_pgdn),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.PAGEDOWN) },
+            )
+        }
+        // Function keys F1-F12
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_f1),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.FUNCTION_1) },
+            )
+        }
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_f2),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.FUNCTION_2) },
+            )
+        }
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_f3),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.FUNCTION_3) },
+            )
+        }
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_f4),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.FUNCTION_4) },
+            )
+        }
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_f5),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.FUNCTION_5) },
+            )
+        }
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_f6),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.FUNCTION_6) },
+            )
+        }
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_f7),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.FUNCTION_7) },
+            )
+        }
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_f8),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.FUNCTION_8) },
+            )
+        }
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_f9),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.FUNCTION_9) },
+            )
+        }
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_f10),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.FUNCTION_10) },
+            )
+        }
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_f11),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.FUNCTION_11) },
+            )
+        }
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_f12),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.FUNCTION_12) },
+            )
+        }
+    }
+
+    // Action buttons (always visible). The caller decides their size via the modifier.
+    val textInputButton: @Composable (Modifier) -> Unit = { buttonModifier ->
+        TerminalKeyboardActionButton(
+            icon = Icons.Default.Edit,
+            contentDescription = stringResource(R.string.terminal_keyboard_text_input_button),
+            onClick = {
+                onOpenTextInput()
+                onInteraction()
+            },
+            modifier = buttonModifier,
+        )
+    }
+    val keyboardToggleButton: @Composable (Modifier) -> Unit = { buttonModifier ->
+        TerminalKeyboardActionButton(
+            icon = if (imeVisible) Icons.Default.KeyboardHide else Icons.Default.Keyboard,
+            contentDescription = stringResource(
+                if (imeVisible) {
+                    R.string.image_description_hide_keyboard
+                } else {
+                    R.string.image_description_show_keyboard
+                },
+            ),
+            onClick = {
+                if (imeVisible) {
+                    onHideIme()
+                } else {
+                    onShowIme()
+                }
+                onInteraction()
+            },
+            modifier = buttonModifier,
+        )
+    }
+
     Surface(
         modifier = modifier
             .pointerInput(Unit) {
@@ -232,255 +482,44 @@ internal fun TerminalKeyboardContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(TERMINAL_KEYBOARD_TOTAL_HEIGHT_DP.dp),
+                .height((rowCount * TERMINAL_KEYBOARD_HEIGHT_DP).dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Scrollable key buttons, arranged on two rows so they fit without scrolling
+            // Scrollable special keys, split across the configured number of rows
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .horizontalScroll(scrollState),
             ) {
-                // First row: modifier, escape, tab and navigation keys
-                Row(
-                    modifier = Modifier.height(TERMINAL_KEYBOARD_HEIGHT_DP.dp),
-                    horizontalArrangement = Arrangement.Start, // No spacing between keys
-                ) {
-                    // Ctrl key (sticky modifier)
-                    ModifierKeyButton(
-                        text = stringResource(R.string.button_key_ctrl),
-                        contentDescription = stringResource(R.string.image_description_toggle_control_character),
-                        modifierLevel = modifierState.ctrlState,
-                        onClick = onCtrlPress,
-                    )
-
-                    // Esc key
-                    KeyButton(
-                        text = stringResource(R.string.button_key_esc),
-                        contentDescription = stringResource(R.string.image_description_send_escape_character),
-                        onClick = onEscPress,
-                    )
-
-                    // Tab key
-                    KeyButton(
-                        text = "⇥", // Tab symbol
-                        contentDescription = stringResource(R.string.image_description_send_tab_character),
-                        onClick = onTabPress,
-                    )
-
-                    // Arrow keys (repeatable)
-                    RepeatableKeyButton(
-                        icon = Icons.Default.KeyboardArrowUp,
-                        contentDescription = stringResource(R.string.image_description_up),
-                        onPress = {
-                            onKeyPress(VTermKey.UP)
-                            if (bumpyArrows) {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            }
-                        },
-                    )
-
-                    RepeatableKeyButton(
-                        icon = Icons.Default.KeyboardArrowDown,
-                        contentDescription = stringResource(R.string.image_description_down),
-                        onPress = {
-                            onKeyPress(VTermKey.DOWN)
-                            if (bumpyArrows) {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            }
-                        },
-                    )
-
-                    RepeatableKeyButton(
-                        icon = Icons.Default.KeyboardArrowLeft,
-                        contentDescription = stringResource(R.string.image_description_left),
-                        onPress = {
-                            onKeyPress(VTermKey.LEFT)
-                            if (bumpyArrows) {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            }
-                        },
-                    )
-
-                    RepeatableKeyButton(
-                        icon = Icons.Default.KeyboardArrowRight,
-                        contentDescription = stringResource(R.string.image_description_right),
-                        onPress = {
-                            onKeyPress(VTermKey.RIGHT)
-                            if (bumpyArrows) {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            }
-                        },
-                    )
-
-                    // Home/End
-                    KeyButton(
-                        text = stringResource(R.string.button_key_home),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.HOME) },
-                    )
-
-                    KeyButton(
-                        text = stringResource(R.string.button_key_end),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.END) },
-                    )
-
-                    // Page Up/Down
-                    KeyButton(
-                        text = stringResource(R.string.button_key_pgup),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.PAGEUP) },
-                    )
-
-                    KeyButton(
-                        text = stringResource(R.string.button_key_pgdn),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.PAGEDOWN) },
-                    )
-                }
-
-                // Second row: function keys F1-F12
-                Row(
-                    modifier = Modifier.height(TERMINAL_KEYBOARD_HEIGHT_DP.dp),
-                    horizontalArrangement = Arrangement.Start, // No spacing between keys
-                ) {
-                    KeyButton(
-                        text = stringResource(R.string.button_key_f1),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.FUNCTION_1) },
-                    )
-
-                    KeyButton(
-                        text = stringResource(R.string.button_key_f2),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.FUNCTION_2) },
-                    )
-
-                    KeyButton(
-                        text = stringResource(R.string.button_key_f3),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.FUNCTION_3) },
-                    )
-
-                    KeyButton(
-                        text = stringResource(R.string.button_key_f4),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.FUNCTION_4) },
-                    )
-
-                    KeyButton(
-                        text = stringResource(R.string.button_key_f5),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.FUNCTION_5) },
-                    )
-
-                    KeyButton(
-                        text = stringResource(R.string.button_key_f6),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.FUNCTION_6) },
-                    )
-
-                    KeyButton(
-                        text = stringResource(R.string.button_key_f7),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.FUNCTION_7) },
-                    )
-
-                    KeyButton(
-                        text = stringResource(R.string.button_key_f8),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.FUNCTION_8) },
-                    )
-
-                    KeyButton(
-                        text = stringResource(R.string.button_key_f9),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.FUNCTION_9) },
-                    )
-
-                    KeyButton(
-                        text = stringResource(R.string.button_key_f10),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.FUNCTION_10) },
-                    )
-
-                    KeyButton(
-                        text = stringResource(R.string.button_key_f11),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.FUNCTION_11) },
-                    )
-
-                    KeyButton(
-                        text = stringResource(R.string.button_key_f12),
-                        contentDescription = null,
-                        onClick = { onKeyPress(VTermKey.FUNCTION_12) },
-                    )
+                keys.splitIntoRows(rowCount).forEach { rowKeys ->
+                    Row(
+                        modifier = Modifier.height(TERMINAL_KEYBOARD_HEIGHT_DP.dp),
+                        horizontalArrangement = Arrangement.Start, // No spacing between keys
+                    ) {
+                        rowKeys.forEach { key -> key() }
+                    }
                 }
             }
 
-            // Fixed action buttons stacked on the right (always visible)
-            Column {
-                // Text input button
-                Surface(
-                    onClick = {
-                        onOpenTextInput()
-                        onInteraction()
-                    },
-                    modifier = Modifier.size(
+            if (rowCount == 1) {
+                // Single compact row: place the action buttons side by side
+                textInputButton(
+                    Modifier.size(
                         width = TERMINAL_KEYBOARD_WIDTH_DP.dp,
                         height = TERMINAL_KEYBOARD_HEIGHT_DP.dp,
                     ),
-                    shape = RectangleShape,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = UI_OPACITY),
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        Icon(
-                            Icons.Default.Edit,
-                            contentDescription = stringResource(R.string.terminal_keyboard_text_input_button),
-                            modifier = Modifier.height(TERMINAL_KEYBOARD_CONTENT_SIZE_DP.dp),
-                        )
-                    }
-                }
-
-                // Keyboard toggle button
-                Surface(
-                    onClick = {
-                        if (imeVisible) {
-                            onHideIme()
-                        } else {
-                            onShowIme()
-                        }
-                        onInteraction()
-                    },
-                    modifier = Modifier.size(
+                )
+                keyboardToggleButton(
+                    Modifier.size(
                         width = TERMINAL_KEYBOARD_WIDTH_DP.dp,
                         height = TERMINAL_KEYBOARD_HEIGHT_DP.dp,
                     ),
-                    shape = RectangleShape,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = UI_OPACITY),
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        Icon(
-                            if (imeVisible) Icons.Default.KeyboardHide else Icons.Default.Keyboard,
-                            contentDescription = stringResource(
-                                if (imeVisible) {
-                                    R.string.image_description_hide_keyboard
-                                } else {
-                                    R.string.image_description_show_keyboard
-                                },
-                            ),
-                            modifier = Modifier.height(TERMINAL_KEYBOARD_CONTENT_SIZE_DP.dp),
-                        )
-                    }
+                )
+            } else {
+                // Multiple rows: stack the action buttons, splitting the height evenly
+                Column(modifier = Modifier.fillMaxHeight()) {
+                    textInputButton(Modifier.width(TERMINAL_KEYBOARD_WIDTH_DP.dp).weight(1f))
+                    keyboardToggleButton(Modifier.width(TERMINAL_KEYBOARD_WIDTH_DP.dp).weight(1f))
                 }
             }
         }
@@ -543,6 +582,37 @@ private fun KeyButton(
             color = backgroundColor,
             content = content,
         )
+    }
+}
+
+/**
+ * A square action button (text input, keyboard toggle) shown to the right of the keys.
+ * The caller supplies the size via [modifier].
+ */
+@Composable
+private fun TerminalKeyboardActionButton(
+    icon: ImageVector,
+    contentDescription: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RectangleShape,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = UI_OPACITY),
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Icon(
+                icon,
+                contentDescription = contentDescription,
+                modifier = Modifier.height(TERMINAL_KEYBOARD_CONTENT_SIZE_DP.dp),
+            )
+        }
     }
 }
 

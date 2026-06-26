@@ -72,6 +72,7 @@ data class SettingsUiState(
     val keymode: String = "none",
     val camera: String = "Ctrl+A then Space",
     val bumpyarrows: Boolean = true,
+    val specialKeyRows: String = "2",
     val bell: Boolean = true,
     val bellVolume: Float = 0.5f,
     val bellVibrate: Boolean = true,
@@ -210,6 +211,10 @@ class SettingsViewModel @Inject constructor(
             keymode = prefs.getString("keymode", "none") ?: "none",
             camera = prefs.getString("camera", "Ctrl+A then Space") ?: "Ctrl+A then Space",
             bumpyarrows = prefs.getBoolean("bumpyarrows", true),
+            specialKeyRows = prefs.getString(
+                PreferenceConstants.SPECIAL_KEY_ROWS,
+                PreferenceConstants.SPECIAL_KEY_ROWS_DEFAULT,
+            ) ?: PreferenceConstants.SPECIAL_KEY_ROWS_DEFAULT,
             bell = prefs.getBoolean("bell", true),
             bellVolume = prefs.getFloat("bellVolume", 0.5f),
             bellVibrate = prefs.getBoolean("bellVibrate", true),
@@ -339,6 +344,10 @@ class SettingsViewModel @Inject constructor(
 
     fun updateBumpyArrows(value: Boolean) {
         updateBooleanPref(PreferenceConstants.BUMPY_ARROWS, value) { copy(bumpyarrows = value) }
+    }
+
+    fun updateSpecialKeyRows(value: String) {
+        updateStringPref(PreferenceConstants.SPECIAL_KEY_ROWS, value) { copy(specialKeyRows = value) }
     }
 
     fun updateScrollback(value: String) {

@@ -193,6 +193,7 @@ fun SettingsScreen(
         onVolumeFontChange = viewModel::updateVolumeFont,
         onKeepAliveChange = viewModel::updateKeepAlive,
         onAlwaysVisibleChange = viewModel::updateAlwaysVisible,
+        onSpecialKeyRowsChange = viewModel::updateSpecialKeyRows,
         onShiftFkeysChange = viewModel::updateShiftFkeys,
         onCtrlFkeysChange = viewModel::updateCtrlFkeys,
         onStickyModifiersChange = viewModel::updateStickyModifiers,
@@ -238,6 +239,7 @@ fun SettingsScreenContent(
     onVolumeFontChange: (Boolean) -> Unit,
     onKeepAliveChange: (Boolean) -> Unit,
     onAlwaysVisibleChange: (Boolean) -> Unit,
+    onSpecialKeyRowsChange: (String) -> Unit,
     onShiftFkeysChange: (Boolean) -> Unit,
     onCtrlFkeysChange: (Boolean) -> Unit,
     onStickyModifiersChange: (String) -> Unit,
@@ -568,6 +570,20 @@ fun SettingsScreenContent(
                     summary = stringResource(R.string.pref_alwaysvisible_summary),
                     checked = uiState.alwaysvisible,
                     onCheckedChange = onAlwaysVisibleChange,
+                )
+            }
+
+            item {
+                ListPreference(
+                    title = stringResource(R.string.pref_specialkeyrows_title),
+                    summary = uiState.specialKeyRows,
+                    value = uiState.specialKeyRows,
+                    entries = listOf(
+                        "1" to "1",
+                        "2" to "2",
+                        "3" to "3",
+                    ),
+                    onValueChange = onSpecialKeyRowsChange,
                 )
             }
 
@@ -1603,6 +1619,7 @@ private fun SettingsScreenPreview() {
             onVolumeFontChange = {},
             onKeepAliveChange = {},
             onAlwaysVisibleChange = {},
+            onSpecialKeyRowsChange = {},
             onShiftFkeysChange = {},
             onCtrlFkeysChange = {},
             onStickyModifiersChange = {},

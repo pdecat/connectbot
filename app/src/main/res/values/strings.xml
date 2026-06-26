@@ -296,6 +296,9 @@
 	<!-- Title for special keys always visible preference -->
 	<string name="pref_alwaysvisible_title">Special keys always visible</string>
 
+	<!-- Title for the number of special-key rows preference -->
+	<string name="pref_specialkeyrows_title">Special key rows</string>
+
 	<!-- Name for the page up/down gesture preference -->
 	<string name="pref_pg_updn_gesture_title">"Page up/down gesture"</string>
 	<!-- Summary for the full screen preference -->
