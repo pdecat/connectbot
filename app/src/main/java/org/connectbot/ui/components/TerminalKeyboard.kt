@@ -238,8 +238,9 @@ internal fun TerminalKeyboardContent(
         }
     }
 
-    // The ordered set of special keys; split across the configured number of rows below.
-    val keys: List<@Composable () -> Unit> = buildList {
+    // Navigation/control keys fill the first row; the function keys (Enter, then F1-F12)
+    // fill the remaining rows, so Enter always sits immediately to the left of F1.
+    val navKeys: List<@Composable () -> Unit> = buildList {
         // Ctrl key (sticky modifier)
         add {
             ModifierKeyButton(
@@ -344,6 +345,17 @@ internal fun TerminalKeyboardContent(
                 onClick = { onKeyPress(VTermKey.PAGEDOWN) },
             )
         }
+    }
+
+    val functionKeys: List<@Composable () -> Unit> = buildList {
+        // Enter, immediately to the left of F1
+        add {
+            KeyButton(
+                text = stringResource(R.string.button_key_enter),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.ENTER) },
+            )
+        }
         // Function keys F1-F12
         add {
             KeyButton(
@@ -431,6 +443,12 @@ internal fun TerminalKeyboardContent(
         }
     }
 
+    val keyRows = if (rowCount <= 1) {
+        listOf(navKeys + functionKeys)
+    } else {
+        listOf(navKeys) + functionKeys.splitIntoRows(rowCount - 1)
+    }
+
     // Action buttons (always visible). The caller decides their size via the modifier.
     val textInputButton: @Composable (Modifier) -> Unit = { buttonModifier ->
         TerminalKeyboardActionButton(
@@ -491,7 +509,7 @@ internal fun TerminalKeyboardContent(
                     .weight(1f)
                     .horizontalScroll(scrollState),
             ) {
-                keys.splitIntoRows(rowCount).forEach { rowKeys ->
+                keyRows.forEach { rowKeys ->
                     Row(
                         modifier = Modifier.height(TERMINAL_KEYBOARD_HEIGHT_DP.dp),
                         horizontalArrangement = Arrangement.Start, // No spacing between keys

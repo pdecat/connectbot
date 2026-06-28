@@ -956,6 +956,8 @@
 
 	<!-- Text for the "Esc" button in virtual keyboard. -->
 	<string name="button_key_esc">Esc</string>
+	<!-- Text for the "Enter" button in virtual keyboard. -->
+	<string name="button_key_enter">Enter</string>
 	<!-- Text for the "Ctrl" button in virtual keyboard. -->
 	<string name="button_key_ctrl">Ctrl</string>
 
