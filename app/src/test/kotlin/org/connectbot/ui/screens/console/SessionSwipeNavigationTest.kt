@@ -184,4 +184,38 @@ class SessionSwipeNavigationTest {
             ),
         )
     }
+
+    @Test
+    fun shouldSuppressSoftwareKeyboardOnResume_suppressesOnlyKeyboardFoldedBeforePause() {
+        assertTrue(
+            shouldSuppressSoftwareKeyboardOnResume(
+                restoreKeyboardOnResume = false,
+                keyboardVisibleBeforePause = false,
+            ),
+        )
+
+        assertFalse(
+            shouldSuppressSoftwareKeyboardOnResume(
+                restoreKeyboardOnResume = false,
+                keyboardVisibleBeforePause = true,
+            ),
+        )
+    }
+
+    @Test
+    fun shouldSuppressSoftwareKeyboardOnResume_neverSuppressesWhenRestoreEnabled() {
+        assertFalse(
+            shouldSuppressSoftwareKeyboardOnResume(
+                restoreKeyboardOnResume = true,
+                keyboardVisibleBeforePause = false,
+            ),
+        )
+
+        assertFalse(
+            shouldSuppressSoftwareKeyboardOnResume(
+                restoreKeyboardOnResume = true,
+                keyboardVisibleBeforePause = true,
+            ),
+        )
+    }
 }

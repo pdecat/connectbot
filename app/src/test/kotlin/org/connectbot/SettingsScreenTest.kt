@@ -293,6 +293,7 @@ class SettingsScreenTest {
                     onKeepAliveChange = {},
                     onAlwaysVisibleChange = {},
                     onSpecialKeyRowsChange = {},
+                    onKeyboardRestoreOnResumeChange = {},
                     onSwipeSessionsChange = {},
                     onShiftFkeysChange = {},
                     onCtrlFkeysChange = {},

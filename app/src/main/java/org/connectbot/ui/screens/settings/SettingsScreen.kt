@@ -194,6 +194,7 @@ fun SettingsScreen(
         onKeepAliveChange = viewModel::updateKeepAlive,
         onAlwaysVisibleChange = viewModel::updateAlwaysVisible,
         onSpecialKeyRowsChange = viewModel::updateSpecialKeyRows,
+        onKeyboardRestoreOnResumeChange = viewModel::updateKeyboardRestoreOnResume,
         onShiftFkeysChange = viewModel::updateShiftFkeys,
         onCtrlFkeysChange = viewModel::updateCtrlFkeys,
         onStickyModifiersChange = viewModel::updateStickyModifiers,
@@ -240,6 +241,7 @@ fun SettingsScreenContent(
     onKeepAliveChange: (Boolean) -> Unit,
     onAlwaysVisibleChange: (Boolean) -> Unit,
     onSpecialKeyRowsChange: (String) -> Unit,
+    onKeyboardRestoreOnResumeChange: (Boolean) -> Unit,
     onShiftFkeysChange: (Boolean) -> Unit,
     onCtrlFkeysChange: (Boolean) -> Unit,
     onStickyModifiersChange: (String) -> Unit,
@@ -562,6 +564,15 @@ fun SettingsScreenContent(
 
             item {
                 PreferenceCategory(title = stringResource(R.string.pref_keyboard_category))
+            }
+
+            item {
+                SwitchPreference(
+                    title = stringResource(R.string.pref_keyboard_restore_on_resume_title),
+                    summary = stringResource(R.string.pref_keyboard_restore_on_resume_summary),
+                    checked = uiState.keyboardRestoreOnResume,
+                    onCheckedChange = onKeyboardRestoreOnResumeChange,
+                )
             }
 
             item {
@@ -1620,6 +1631,7 @@ private fun SettingsScreenPreview() {
             onKeepAliveChange = {},
             onAlwaysVisibleChange = {},
             onSpecialKeyRowsChange = {},
+            onKeyboardRestoreOnResumeChange = {},
             onShiftFkeysChange = {},
             onCtrlFkeysChange = {},
             onStickyModifiersChange = {},

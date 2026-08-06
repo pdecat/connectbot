@@ -316,6 +316,11 @@
 	<!-- The category title for keyboard preferences -->
 	<string name="pref_keyboard_category">"Keyboard"</string>
 
+	<!-- Name for the preference restoring the on-screen keyboard when the console returns to the foreground -->
+	<string name="pref_keyboard_restore_on_resume_title">Restore keyboard on return</string>
+	<!-- Summary for the preference restoring the on-screen keyboard when the console returns to the foreground -->
+	<string name="pref_keyboard_restore_on_resume_summary">Show the on-screen keyboard again when returning to the console. Turn off to keep it hidden when you folded it away yourself.</string>
+
 	<!-- Name for the shifted numbers are f-keys preference -->
 	<string name="pref_shiftfkeys_title">"Shift+num are F-keys"</string>
 	<!-- Summary for the shifted numbers are f-keys preference -->

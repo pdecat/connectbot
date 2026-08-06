@@ -79,6 +79,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -109,6 +110,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.LinkAnnotation
@@ -121,6 +123,8 @@ import androidx.core.content.edit
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.preference.PreferenceManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -276,6 +280,23 @@ internal fun shouldPreserveSoftwareKeyboardForBridgeChange(
     previousBridgeId != currentBridgeId &&
     showSoftwareKeyboard &&
     !hasHardwareKeyboard
+
+/**
+ * Decide whether an IME that the system brings back on its own when the console returns to the
+ * foreground should be hidden again.
+ *
+ * The IME input view keeps focus while the app is in the background, so Android restores the soft
+ * keyboard on return even when the user had folded it away. Suppress that only when the user opted
+ * out of restoring the keyboard and the keyboard was already folded when the console was paused.
+ *
+ * @param restoreKeyboardOnResume Value of [PreferenceConstants.KEYBOARD_RESTORE_ON_RESUME].
+ * @param keyboardVisibleBeforePause Whether the soft keyboard was requested when the console paused.
+ */
+@VisibleForTesting
+internal fun shouldSuppressSoftwareKeyboardOnResume(
+    restoreKeyboardOnResume: Boolean,
+    keyboardVisibleBeforePause: Boolean,
+): Boolean = !restoreKeyboardOnResume && !keyboardVisibleBeforePause
 
 private fun Modifier.sessionSwipeNavigation(
     currentIndex: Int,
@@ -537,6 +558,12 @@ fun ConsoleScreen(
     var titleBarHide by remember { mutableStateOf(prefs.getBoolean(PreferenceConstants.TITLEBARHIDE, false)) }
     val volumeKeysChangeFontSize = remember { prefs.getBoolean(PreferenceConstants.VOLUME_FONT, true) }
     val keepScreenAwake = remember { prefs.getBoolean(PreferenceConstants.KEEP_ALIVE, true) }
+    val restoreKeyboardOnResume = remember {
+        prefs.getBoolean(
+            PreferenceConstants.KEYBOARD_RESTORE_ON_RESUME,
+            PreferenceConstants.KEYBOARD_RESTORE_ON_RESUME_DEFAULT,
+        )
+    }
 
     // Keyboard state
     val hasHardwareKeyboard = rememberHasHardwareKeyboard()
@@ -582,6 +609,10 @@ fun ConsoleScreen(
     var keyboardScrollInProgress by remember { mutableStateOf(false) }
     var previousBridgeIdForImeState by remember { mutableStateOf<Long?>(null) }
     var ignoreImeHiddenForBridgeId by remember { mutableStateOf<Long?>(null) }
+    // Whether the soft keyboard was requested when the console was last paused, and whether a
+    // system-initiated IME restore should be undone now that the console is back in front.
+    var keyboardVisibleBeforePause by remember { mutableStateOf(false) }
+    var suppressRestoredIme by remember { mutableStateOf(false) }
     var previousBridgeIdForSessionOpen by remember { mutableStateOf<Long?>(null) }
     var previousSessionOpen by remember { mutableStateOf(false) }
 
@@ -725,9 +756,62 @@ fun ConsoleScreen(
     var hasImeBeenVisible by remember { mutableStateOf(false) }
     val latestCurrentBridgeId by rememberUpdatedState(currentBridgeId)
 
+    // Hide the IME without going through the terminal, which only reacts to state changes and so
+    // cannot undo a soft keyboard the system put back up on its own.
+    fun hideSystemIme() {
+        val window = (context as? Activity)?.window ?: return
+        try {
+            WindowInsetsControllerCompat(window, window.decorView)
+                .hide(WindowInsetsCompat.Type.ime())
+        } catch (e: IllegalArgumentException) {
+            // Handle foldable device state issues
+            Timber.e(e, "Error hiding restored soft keyboard (foldable device?)")
+        }
+    }
+
+    // Remember whether the keyboard was folded when leaving the console, so the IME the system
+    // restores on return can be dismissed again when the user opted out of restoring it.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, restoreKeyboardOnResume) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> {
+                    keyboardVisibleBeforePause = showSoftwareKeyboard
+                }
+
+                Lifecycle.Event.ON_RESUME -> {
+                    suppressRestoredIme = shouldSuppressSoftwareKeyboardOnResume(
+                        restoreKeyboardOnResume = restoreKeyboardOnResume,
+                        keyboardVisibleBeforePause = keyboardVisibleBeforePause,
+                    )
+                    if (suppressRestoredIme) {
+                        hideSystemIme()
+                    }
+                }
+
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Stop suppressing as soon as the keyboard is wanted again
+    LaunchedEffect(showSoftwareKeyboard) {
+        if (showSoftwareKeyboard) {
+            suppressRestoredIme = false
+        }
+    }
+
     // Sync our state when user dismisses IME externally (back button)
     LaunchedEffect(systemImeVisible) {
         if (systemImeVisible) {
+            if (suppressRestoredIme && !showSoftwareKeyboard) {
+                // The system put the keyboard back up on return to the foreground even though the
+                // user had folded it: fold it again and leave our own state alone.
+                hideSystemIme()
+                return@LaunchedEffect
+            }
             hasImeBeenVisible = true
             ignoreImeHiddenForBridgeId = null
         }
