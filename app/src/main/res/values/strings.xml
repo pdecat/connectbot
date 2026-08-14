@@ -927,6 +927,10 @@
 	     accessibility purposes. -->
 	<string name="image_description_toggle_control_character">Toggle control character.</string>
 
+	<!-- Describes the icon of the "shift" button in the terminal view for
+	     accessibility purposes. -->
+	<string name="image_description_toggle_shift_key">Toggle shift key.</string>
+
 	<!-- Describes the icon of the "send escape character" button in the terminal view for
 	     accessibility purposes. -->
 	<string name="image_description_send_escape_character">Send escape character.</string>
@@ -965,6 +969,8 @@
 	<string name="button_key_enter">Enter</string>
 	<!-- Text for the "Ctrl" button in virtual keyboard. -->
 	<string name="button_key_ctrl">Ctrl</string>
+	<!-- Text for the "Shift" button in virtual keyboard. -->
+	<string name="button_key_shift">Shift</string>
 
 	<!-- Text for the "Home" button in virtual keyboard. -->
 	<string name="button_key_home">Home</string>

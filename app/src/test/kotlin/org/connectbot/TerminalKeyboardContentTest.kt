@@ -56,6 +56,7 @@ class TerminalKeyboardContentTest {
     @Test
     fun terminalKeyboardContent_displaysCoreKeysAndInvokesCallbacks() {
         var ctrlPressed = false
+        var shiftPressed = false
         var escapePressed = false
         var tabPressed = false
         var interactionCount = 0
@@ -64,6 +65,7 @@ class TerminalKeyboardContentTest {
 
         setKeyboardContent(
             onCtrlPress = { ctrlPressed = true },
+            onShiftPress = { shiftPressed = true },
             onEscPress = { escapePressed = true },
             onTabPress = { tabPressed = true },
             onInteraction = { interactionCount++ },
@@ -73,6 +75,10 @@ class TerminalKeyboardContentTest {
 
         composeTestRule
             .onNodeWithText(composeTestRule.activity.getString(R.string.button_key_ctrl))
+            .assertIsDisplayed()
+            .performClick()
+        composeTestRule
+            .onNodeWithText(composeTestRule.activity.getString(R.string.button_key_shift))
             .assertIsDisplayed()
             .performClick()
         composeTestRule
@@ -91,6 +97,7 @@ class TerminalKeyboardContentTest {
             .performClick()
 
         assertTrue(ctrlPressed)
+        assertTrue(shiftPressed)
         assertTrue(escapePressed)
         assertTrue(tabPressed)
         assertTrue(textInputOpened)
@@ -172,6 +179,7 @@ class TerminalKeyboardContentTest {
             shiftState = ModifierLevel.OFF,
         ),
         onCtrlPress: () -> Unit = {},
+        onShiftPress: () -> Unit = {},
         onEscPress: () -> Unit = {},
         onTabPress: () -> Unit = {},
         onKeyPress: (Int) -> Unit = {},
@@ -188,6 +196,7 @@ class TerminalKeyboardContentTest {
                 TerminalKeyboardContent(
                     modifierState = modifierState,
                     onCtrlPress = onCtrlPress,
+                    onShiftPress = onShiftPress,
                     onEscPress = onEscPress,
                     onTabPress = onTabPress,
                     onKeyPress = onKeyPress,
