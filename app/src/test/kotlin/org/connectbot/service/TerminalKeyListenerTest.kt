@@ -17,12 +17,25 @@
 
 package org.connectbot.service
 
+import org.connectbot.terminal.VTermKey
 import org.junit.Assert.assertEquals
 import org.junit.Test
+
+// Terminal modifier bitmasks (per VTerm spec), mirrored from TerminalKeyListener.
+private const val VTERM_MOD_SHIFT = 1
+private const val VTERM_MOD_CTRL = 4
 
 class TerminalKeyListenerTest {
 
     private val noopDispatcher = KeyDispatcher { _, _ -> }
+
+    private class RecordingDispatcher : KeyDispatcher {
+        val dispatched = mutableListOf<Pair<Int, Int>>()
+
+        override fun dispatchKey(modifiers: Int, key: Int) {
+            dispatched += modifiers to key
+        }
+    }
 
     // NONE: sticky is OFF for all modifiers. metaPress only works if forceSticky=true.
 
@@ -112,5 +125,57 @@ class TerminalKeyListenerTest {
         listener.metaPress(TerminalKeyListener.CTRL_ON)
         listener.sendPressedKey(0)
         assertEquals(ModifierLevel.LOCKED, listener.getModifierState().ctrlState)
+    }
+
+    // sendTab carries the active modifiers, so Shift+Tab reaches the terminal as a back-tab.
+
+    @Test
+    fun `sendTab without modifiers dispatches a plain tab`() {
+        val dispatcher = RecordingDispatcher()
+        val listener = TerminalKeyListener(dispatcher, StickyModifierSetting.ALL)
+        listener.sendTab()
+        assertEquals(listOf(0 to VTermKey.TAB), dispatcher.dispatched)
+    }
+
+    @Test
+    fun `sendTab with shift dispatches a shifted tab`() {
+        val dispatcher = RecordingDispatcher()
+        val listener = TerminalKeyListener(dispatcher, StickyModifierSetting.ALL)
+        listener.metaPress(TerminalKeyListener.SHIFT_ON)
+        listener.sendTab()
+        assertEquals(listOf(VTERM_MOD_SHIFT to VTermKey.TAB), dispatcher.dispatched)
+        assertEquals(ModifierLevel.OFF, listener.getModifierState().shiftState)
+    }
+
+    @Test
+    fun `sendEscape without modifiers dispatches a plain escape`() {
+        val dispatcher = RecordingDispatcher()
+        val listener = TerminalKeyListener(dispatcher, StickyModifierSetting.ALL)
+        listener.sendEscape()
+        assertEquals(listOf(0 to VTermKey.ESCAPE), dispatcher.dispatched)
+    }
+
+    @Test
+    fun `sendEscape with shift dispatches a shifted escape`() {
+        val dispatcher = RecordingDispatcher()
+        val listener = TerminalKeyListener(dispatcher, StickyModifierSetting.ALL)
+        listener.metaPress(TerminalKeyListener.SHIFT_ON)
+        listener.sendEscape()
+        assertEquals(listOf(VTERM_MOD_SHIFT to VTermKey.ESCAPE), dispatcher.dispatched)
+        assertEquals(ModifierLevel.OFF, listener.getModifierState().shiftState)
+    }
+
+    @Test
+    fun `sendTab with LOCKED ctrl keeps dispatching a ctrl tab`() {
+        val dispatcher = RecordingDispatcher()
+        val listener = TerminalKeyListener(dispatcher, StickyModifierSetting.ALL)
+        listener.metaPress(TerminalKeyListener.CTRL_ON)
+        listener.metaPress(TerminalKeyListener.CTRL_ON)
+        listener.sendTab()
+        listener.sendTab()
+        assertEquals(
+            listOf(VTERM_MOD_CTRL to VTermKey.TAB, VTERM_MOD_CTRL to VTermKey.TAB),
+            dispatcher.dispatched,
+        )
     }
 }

@@ -78,13 +78,21 @@ class TerminalKeyListener(
     private val _modifierState = MutableStateFlow(getModifierState())
     val modifierState: StateFlow<ModifierState> = _modifierState.asStateFlow()
 
+    /**
+     * Sends Escape with whatever modifiers are currently active, like [sendTab] and
+     * [sendPressedKey], so the on-screen modifier keys apply to every key the bar sends.
+     */
     fun sendEscape() {
-        keyDispatcher.dispatchKey(0, VTermKey.ESCAPE)
+        keyDispatcher.dispatchKey(modifiersForTerminal, VTermKey.ESCAPE)
         clearTransients()
     }
 
+    /**
+     * Sends Tab with whatever modifiers are currently active, so the on-screen Shift key
+     * produces a back-tab (`CSI Z`) rather than a plain 0x09.
+     */
     fun sendTab() {
-        keyDispatcher.dispatchKey(0, VTermKey.TAB)
+        keyDispatcher.dispatchKey(modifiersForTerminal, VTermKey.TAB)
         clearTransients()
     }
 
