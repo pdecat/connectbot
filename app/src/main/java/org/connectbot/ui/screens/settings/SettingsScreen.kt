@@ -81,6 +81,7 @@ import org.connectbot.ui.ObservePermissionOnResume
 import org.connectbot.ui.PreviewScreen
 import org.connectbot.ui.common.getLocalizedFontDisplayName
 import org.connectbot.ui.components.FontDownloadProgressDialog
+import org.connectbot.ui.components.TERMINAL_KEYBOARD_FUNCTION_KEY_CHOICES
 import org.connectbot.ui.theme.ConnectBotTheme
 import org.connectbot.util.LanguageDownloadState
 import org.connectbot.util.LocalFontProvider
@@ -194,6 +195,7 @@ fun SettingsScreen(
         onKeepAliveChange = viewModel::updateKeepAlive,
         onAlwaysVisibleChange = viewModel::updateAlwaysVisible,
         onSpecialKeyRowsChange = viewModel::updateSpecialKeyRows,
+        onSpecialKeyFunctionKeysChange = viewModel::updateSpecialKeyFunctionKeys,
         onKeyboardRestoreOnResumeChange = viewModel::updateKeyboardRestoreOnResume,
         onShiftFkeysChange = viewModel::updateShiftFkeys,
         onCtrlFkeysChange = viewModel::updateCtrlFkeys,
@@ -241,6 +243,7 @@ fun SettingsScreenContent(
     onKeepAliveChange: (Boolean) -> Unit,
     onAlwaysVisibleChange: (Boolean) -> Unit,
     onSpecialKeyRowsChange: (String) -> Unit,
+    onSpecialKeyFunctionKeysChange: (String) -> Unit,
     onKeyboardRestoreOnResumeChange: (Boolean) -> Unit,
     onShiftFkeysChange: (Boolean) -> Unit,
     onCtrlFkeysChange: (Boolean) -> Unit,
@@ -595,6 +598,25 @@ fun SettingsScreenContent(
                         "3" to "3",
                     ),
                     onValueChange = onSpecialKeyRowsChange,
+                )
+            }
+
+            item {
+                val noneLabel = stringResource(R.string.pref_specialkeyfunctionkeys_none)
+                val functionKeyEntries = remember(noneLabel) {
+                    TERMINAL_KEYBOARD_FUNCTION_KEY_CHOICES.map { count ->
+                        (if (count == 0) noneLabel else "F1-F$count") to count.toString()
+                    }
+                }
+                ListPreference(
+                    title = stringResource(R.string.pref_specialkeyfunctionkeys_title),
+                    summary = functionKeyEntries
+                        .firstOrNull { (_, value) -> value == uiState.specialKeyFunctionKeys }
+                        ?.first
+                        ?: uiState.specialKeyFunctionKeys,
+                    value = uiState.specialKeyFunctionKeys,
+                    entries = functionKeyEntries,
+                    onValueChange = onSpecialKeyFunctionKeysChange,
                 )
             }
 
@@ -1631,6 +1653,7 @@ private fun SettingsScreenPreview() {
             onKeepAliveChange = {},
             onAlwaysVisibleChange = {},
             onSpecialKeyRowsChange = {},
+            onSpecialKeyFunctionKeysChange = {},
             onKeyboardRestoreOnResumeChange = {},
             onShiftFkeysChange = {},
             onCtrlFkeysChange = {},

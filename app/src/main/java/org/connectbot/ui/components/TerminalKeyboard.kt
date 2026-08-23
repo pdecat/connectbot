@@ -22,10 +22,11 @@ import android.view.HapticFeedbackConstants
 import android.view.ViewConfiguration
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -52,6 +53,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -67,10 +69,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.preference.PreferenceManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import org.connectbot.R
 import org.connectbot.service.ModifierLevel
@@ -93,6 +97,12 @@ const val TERMINAL_KEYBOARD_HEIGHT_DP = 30
 private const val TERMINAL_KEYBOARD_WIDTH_DP = 45
 
 /**
+ * Narrowest a key may get when a row shares the whole width between its keys. A row that would
+ * have to squeeze past this keeps the keys at their natural width and scrolls instead.
+ */
+private const val TERMINAL_KEYBOARD_MIN_WIDTH_DP = 34
+
+/**
  * Size of the content (icons and text) for the virtual keyboard keys in dp.
  */
 private const val TERMINAL_KEYBOARD_CONTENT_SIZE_DP = 20
@@ -105,6 +115,39 @@ const val TERMINAL_KEYBOARD_MAX_ROWS = 3
 const val TERMINAL_KEYBOARD_DEFAULT_ROWS = 2
 
 /**
+ * Supported and default number of function keys (F1 onwards) shown on the bar. Trimming the
+ * function keys is what keeps their row from scrolling for people who only ever reach for the
+ * first few.
+ */
+val TERMINAL_KEYBOARD_FUNCTION_KEY_CHOICES = listOf(0, 2, 4, 6, 8, 10, 12)
+const val TERMINAL_KEYBOARD_MAX_FUNCTION_KEYS = 12
+const val TERMINAL_KEYBOARD_DEFAULT_FUNCTION_KEYS = 12
+
+/**
+ * One special key, sized by the row that draws it: a stretched slot when the row fits on screen,
+ * its natural width when the row scrolls.
+ */
+private typealias TerminalKeyContent = @Composable (Modifier) -> Unit
+
+/**
+ * Labels and key codes for F1-F12, in order.
+ */
+private val TERMINAL_KEYBOARD_FUNCTION_KEYS = listOf(
+    R.string.button_key_f1 to VTermKey.FUNCTION_1,
+    R.string.button_key_f2 to VTermKey.FUNCTION_2,
+    R.string.button_key_f3 to VTermKey.FUNCTION_3,
+    R.string.button_key_f4 to VTermKey.FUNCTION_4,
+    R.string.button_key_f5 to VTermKey.FUNCTION_5,
+    R.string.button_key_f6 to VTermKey.FUNCTION_6,
+    R.string.button_key_f7 to VTermKey.FUNCTION_7,
+    R.string.button_key_f8 to VTermKey.FUNCTION_8,
+    R.string.button_key_f9 to VTermKey.FUNCTION_9,
+    R.string.button_key_f10 to VTermKey.FUNCTION_10,
+    R.string.button_key_f11 to VTermKey.FUNCTION_11,
+    R.string.button_key_f12 to VTermKey.FUNCTION_12,
+)
+
+/**
  * Reads the user-configured number of special-key rows, clamped to the supported range.
  */
 fun specialKeyboardRows(prefs: SharedPreferences): Int {
@@ -114,19 +157,23 @@ fun specialKeyboardRows(prefs: SharedPreferences): Int {
 }
 
 /**
- * Splits a list into [rows] near-equal contiguous groups (the earlier rows are the smaller
- * ones when the split is uneven), preserving order.
+ * Reads the user-configured number of function keys, clamped to the supported range.
  */
-private fun <T> List<T>.splitIntoRows(rows: Int): List<List<T>> {
-    if (rows <= 1) return listOf(this)
-    return (0 until rows).map { i -> subList(size * i / rows, size * (i + 1) / rows) }
+fun specialKeyboardFunctionKeys(prefs: SharedPreferences): Int {
+    val value = prefs.getString(
+        PreferenceConstants.SPECIAL_KEY_FUNCTION_KEYS,
+        PreferenceConstants.SPECIAL_KEY_FUNCTION_KEYS_DEFAULT,
+    )
+    return (value?.toIntOrNull() ?: TERMINAL_KEYBOARD_DEFAULT_FUNCTION_KEYS)
+        .coerceIn(0, TERMINAL_KEYBOARD_MAX_FUNCTION_KEYS)
 }
 
 /**
  * Virtual keyboard with terminal special keys (Ctrl, Esc, arrows, function keys, etc.)
  * Positioned at the bottom of the console screen with the keys laid out on a configurable
- * number of rows (see [PreferenceConstants.SPECIAL_KEY_ROWS]) so they fit without horizontal
- * scrolling (still scrollable on very narrow screens).
+ * number of rows (see [PreferenceConstants.SPECIAL_KEY_ROWS]). Each row shares the full width
+ * between its keys, and only a row that cannot fit scrolls, which the function keys can avoid
+ * too by showing fewer of them (see [PreferenceConstants.SPECIAL_KEY_FUNCTION_KEYS]).
  * Auto-hide timer is managed by parent ConsoleScreen
  */
 @Composable
@@ -148,7 +195,8 @@ fun TerminalKeyboard(
     val bumpyArrows by remember {
         mutableStateOf(prefs.getBoolean(PreferenceConstants.BUMPY_ARROWS, false))
     }
-    val rows by remember { mutableStateOf(specialKeyboardRows(prefs)) }
+    val rows by remember { mutableIntStateOf(specialKeyboardRows(prefs)) }
+    val functionKeyCount by remember { mutableIntStateOf(specialKeyboardFunctionKeys(prefs)) }
 
     TerminalKeyboardContent(
         modifierState = modifierState,
@@ -181,6 +229,7 @@ fun TerminalKeyboard(
         playAnimation = playAnimation,
         bumpyArrows = bumpyArrows,
         rows = rows,
+        functionKeyCount = functionKeyCount,
         modifier = modifier,
     )
 }
@@ -207,81 +256,71 @@ internal fun TerminalKeyboardContent(
     bumpyArrows: Boolean,
     modifier: Modifier = Modifier,
     rows: Int = TERMINAL_KEYBOARD_DEFAULT_ROWS,
+    functionKeyCount: Int = TERMINAL_KEYBOARD_DEFAULT_FUNCTION_KEYS,
 ) {
-    val scrollState = rememberScrollState()
+    // One scroll state per possible row: rows that fit are drawn without a scroll and never use
+    // theirs, and the rows that overflow scroll on their own instead of dragging the others along.
+    val scrollStates = List(TERMINAL_KEYBOARD_MAX_ROWS) { rememberScrollState() }
     val currentOnScrollInProgressChange by rememberUpdatedState(onScrollInProgressChange)
     val view = LocalView.current
     val rowCount = rows.coerceIn(TERMINAL_KEYBOARD_MIN_ROWS, TERMINAL_KEYBOARD_MAX_ROWS)
+    val shownFunctionKeys = functionKeyCount.coerceIn(0, TERMINAL_KEYBOARD_MAX_FUNCTION_KEYS)
 
     if (bumpyArrows) {
         view.isHapticFeedbackEnabled = true
     }
 
     // Notify parent when scroll state changes
-    LaunchedEffect(scrollState.isScrollInProgress) {
-        currentOnScrollInProgressChange(scrollState.isScrollInProgress)
+    val scrollInProgress = scrollStates.any { it.isScrollInProgress }
+    LaunchedEffect(scrollInProgress) {
+        currentOnScrollInProgressChange(scrollInProgress)
     }
 
-    // Auto-scroll animation on first appearance (only if playAnimation is true)
-    LaunchedEffect(playAnimation) {
-        if (playAnimation) {
-            // Wait a moment for layout to complete
-            delay(100)
-
-            // Scroll all the way to the right to show all keys
-            scrollState.animateScrollTo(
-                value = scrollState.maxValue,
-                animationSpec = tween(durationMillis = 500),
-            )
-
-            // Then scroll back to the left
-            delay(300)
-            scrollState.animateScrollTo(
-                value = 0,
-                animationSpec = tween(durationMillis = 500),
-            )
-        }
-    }
-
-    // Navigation/control keys fill the first row; the function keys (Enter, then F1-F12)
-    // fill the remaining rows, so Enter always sits immediately to the left of F1.
-    val navKeys: List<@Composable () -> Unit> = buildList {
+    // Ctrl, Shift, Esc and Tab: the keys that qualify what is typed next.
+    val modifierKeys: List<TerminalKeyContent> = buildList {
         // Ctrl key (sticky modifier)
-        add {
+        add { keyModifier ->
             ModifierKeyButton(
                 text = stringResource(R.string.button_key_ctrl),
                 contentDescription = stringResource(R.string.image_description_toggle_control_character),
                 modifierLevel = modifierState.ctrlState,
                 onClick = onCtrlPress,
+                modifier = keyModifier,
             )
         }
         // Shift key (sticky modifier)
-        add {
+        add { keyModifier ->
             ModifierKeyButton(
                 text = stringResource(R.string.button_key_shift),
                 contentDescription = stringResource(R.string.image_description_toggle_shift_key),
                 modifierLevel = modifierState.shiftState,
                 onClick = onShiftPress,
+                modifier = keyModifier,
             )
         }
         // Esc key
-        add {
+        add { keyModifier ->
             KeyButton(
                 text = stringResource(R.string.button_key_esc),
                 contentDescription = stringResource(R.string.image_description_send_escape_character),
                 onClick = onEscPress,
+                modifier = keyModifier,
             )
         }
         // Tab key
-        add {
+        add { keyModifier ->
             KeyButton(
                 text = "⇥", // Tab symbol
                 contentDescription = stringResource(R.string.image_description_send_tab_character),
                 onClick = onTabPress,
+                modifier = keyModifier,
             )
         }
-        // Arrow keys (repeatable)
-        add {
+    }
+
+    // Arrow keys (repeatable)
+    val arrowKeys: List<TerminalKeyContent> = buildList {
+        add { keyModifier ->
             RepeatableKeyButton(
                 icon = Icons.Default.KeyboardArrowUp,
                 contentDescription = stringResource(R.string.image_description_up),
@@ -291,9 +330,10 @@ internal fun TerminalKeyboardContent(
                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     }
                 },
+                modifier = keyModifier,
             )
         }
-        add {
+        add { keyModifier ->
             RepeatableKeyButton(
                 icon = Icons.Default.KeyboardArrowDown,
                 contentDescription = stringResource(R.string.image_description_down),
@@ -303,9 +343,10 @@ internal fun TerminalKeyboardContent(
                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     }
                 },
+                modifier = keyModifier,
             )
         }
-        add {
+        add { keyModifier ->
             RepeatableKeyButton(
                 icon = Icons.Default.KeyboardArrowLeft,
                 contentDescription = stringResource(R.string.image_description_left),
@@ -315,9 +356,10 @@ internal fun TerminalKeyboardContent(
                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     }
                 },
+                modifier = keyModifier,
             )
         }
-        add {
+        add { keyModifier ->
             RepeatableKeyButton(
                 icon = Icons.Default.KeyboardArrowRight,
                 contentDescription = stringResource(R.string.image_description_right),
@@ -327,140 +369,78 @@ internal fun TerminalKeyboardContent(
                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     }
                 },
+                modifier = keyModifier,
             )
         }
-        // Home/End
-        add {
+    }
+
+    // Home/End and Page Up/Down
+    val pagingKeys: List<TerminalKeyContent> = buildList {
+        add { keyModifier ->
             KeyButton(
                 text = stringResource(R.string.button_key_home),
                 contentDescription = null,
                 onClick = { onKeyPress(VTermKey.HOME) },
+                modifier = keyModifier,
             )
         }
-        add {
+        add { keyModifier ->
             KeyButton(
                 text = stringResource(R.string.button_key_end),
                 contentDescription = null,
                 onClick = { onKeyPress(VTermKey.END) },
+                modifier = keyModifier,
             )
         }
-        // Page Up/Down
-        add {
+        add { keyModifier ->
             KeyButton(
                 text = stringResource(R.string.button_key_pgup),
                 contentDescription = null,
                 onClick = { onKeyPress(VTermKey.PAGEUP) },
+                modifier = keyModifier,
             )
         }
-        add {
+        add { keyModifier ->
             KeyButton(
                 text = stringResource(R.string.button_key_pgdn),
                 contentDescription = null,
                 onClick = { onKeyPress(VTermKey.PAGEDOWN) },
+                modifier = keyModifier,
             )
         }
     }
 
-    val functionKeys: List<@Composable () -> Unit> = buildList {
-        // Enter, immediately to the left of F1
-        add {
-            KeyButton(
-                text = stringResource(R.string.button_key_enter),
-                contentDescription = null,
-                onClick = { onKeyPress(VTermKey.ENTER) },
-            )
-        }
-        // Function keys F1-F12
-        add {
-            KeyButton(
-                text = stringResource(R.string.button_key_f1),
-                contentDescription = null,
-                onClick = { onKeyPress(VTermKey.FUNCTION_1) },
-            )
-        }
-        add {
-            KeyButton(
-                text = stringResource(R.string.button_key_f2),
-                contentDescription = null,
-                onClick = { onKeyPress(VTermKey.FUNCTION_2) },
-            )
-        }
-        add {
-            KeyButton(
-                text = stringResource(R.string.button_key_f3),
-                contentDescription = null,
-                onClick = { onKeyPress(VTermKey.FUNCTION_3) },
-            )
-        }
-        add {
-            KeyButton(
-                text = stringResource(R.string.button_key_f4),
-                contentDescription = null,
-                onClick = { onKeyPress(VTermKey.FUNCTION_4) },
-            )
-        }
-        add {
-            KeyButton(
-                text = stringResource(R.string.button_key_f5),
-                contentDescription = null,
-                onClick = { onKeyPress(VTermKey.FUNCTION_5) },
-            )
-        }
-        add {
-            KeyButton(
-                text = stringResource(R.string.button_key_f6),
-                contentDescription = null,
-                onClick = { onKeyPress(VTermKey.FUNCTION_6) },
-            )
-        }
-        add {
-            KeyButton(
-                text = stringResource(R.string.button_key_f7),
-                contentDescription = null,
-                onClick = { onKeyPress(VTermKey.FUNCTION_7) },
-            )
-        }
-        add {
-            KeyButton(
-                text = stringResource(R.string.button_key_f8),
-                contentDescription = null,
-                onClick = { onKeyPress(VTermKey.FUNCTION_8) },
-            )
-        }
-        add {
-            KeyButton(
-                text = stringResource(R.string.button_key_f9),
-                contentDescription = null,
-                onClick = { onKeyPress(VTermKey.FUNCTION_9) },
-            )
-        }
-        add {
-            KeyButton(
-                text = stringResource(R.string.button_key_f10),
-                contentDescription = null,
-                onClick = { onKeyPress(VTermKey.FUNCTION_10) },
-            )
-        }
-        add {
-            KeyButton(
-                text = stringResource(R.string.button_key_f11),
-                contentDescription = null,
-                onClick = { onKeyPress(VTermKey.FUNCTION_11) },
-            )
-        }
-        add {
-            KeyButton(
-                text = stringResource(R.string.button_key_f12),
-                contentDescription = null,
-                onClick = { onKeyPress(VTermKey.FUNCTION_12) },
-            )
-        }
+    val enterKey: TerminalKeyContent = { keyModifier ->
+        KeyButton(
+            text = stringResource(R.string.button_key_enter),
+            contentDescription = null,
+            onClick = { onKeyPress(VTermKey.ENTER) },
+            modifier = keyModifier,
+        )
     }
 
-    val keyRows = if (rowCount <= 1) {
-        listOf(navKeys + functionKeys)
-    } else {
-        listOf(navKeys) + functionKeys.splitIntoRows(rowCount - 1)
+    val functionKeys: List<TerminalKeyContent> =
+        TERMINAL_KEYBOARD_FUNCTION_KEYS.take(shownFunctionKeys).map { (labelRes, key) ->
+            val content: TerminalKeyContent = { keyModifier ->
+                KeyButton(
+                    text = stringResource(labelRes),
+                    contentDescription = null,
+                    onClick = { onKeyPress(key) },
+                    modifier = keyModifier,
+                )
+            }
+            content
+        }
+
+    // On three rows the function keys get a row to themselves, the only one that can still
+    // overflow, and Enter closes the bottom row so it sits bottom right like on the IME. Fewer
+    // rows keep the historical order, with Enter immediately to the left of F1.
+    val keyRows: List<List<TerminalKeyContent>> = when {
+        rowCount == 1 -> listOf(modifierKeys + arrowKeys + pagingKeys + listOf(enterKey) + functionKeys)
+        rowCount == 2 && functionKeys.isEmpty() -> listOf(modifierKeys + pagingKeys, arrowKeys + listOf(enterKey))
+        rowCount == 2 -> listOf(modifierKeys + arrowKeys + pagingKeys, listOf(enterKey) + functionKeys)
+        functionKeys.isEmpty() -> listOf(modifierKeys, pagingKeys, arrowKeys + listOf(enterKey))
+        else -> listOf(modifierKeys + pagingKeys, functionKeys, arrowKeys + listOf(enterKey))
     }
 
     // Action buttons (always visible). The caller decides their size via the modifier.
@@ -511,47 +491,74 @@ internal fun TerminalKeyboardContent(
         color = MaterialTheme.colorScheme.surface.copy(alpha = UI_OPACITY),
         tonalElevation = 8.dp,
     ) {
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .height((rowCount * TERMINAL_KEYBOARD_HEIGHT_DP).dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Scrollable special keys, split across the configured number of rows
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(scrollState),
-            ) {
-                keyRows.forEach { rowKeys ->
-                    Row(
-                        modifier = Modifier.height(TERMINAL_KEYBOARD_HEIGHT_DP.dp),
-                        horizontalArrangement = Arrangement.Start, // No spacing between keys
-                    ) {
-                        rowKeys.forEach { key -> key() }
-                    }
+            // The action buttons on the right take one key width per column: two columns on a
+            // single row, one column of stacked buttons otherwise
+            val actionButtonColumns = if (rowCount == 1) 2 else 1
+            val keyAreaWidth = maxWidth - TERMINAL_KEYBOARD_WIDTH_DP.dp * actionButtonColumns
+            val overflowingRows = keyRows.indices.filter { index ->
+                !rowFitsWidth(keyRows[index].size, keyAreaWidth)
+            }
+
+            // Auto-scroll animation on first appearance (only if playAnimation is true), on
+            // whichever rows have keys hidden past their right edge
+            LaunchedEffect(playAnimation, overflowingRows) {
+                if (playAnimation && overflowingRows.isNotEmpty()) {
+                    // Wait a moment for layout to complete
+                    delay(100)
+
+                    // Scroll all the way to the right to show all keys
+                    overflowingRows
+                        .map { index -> launch { scrollStates[index].animateScrollToEnd() } }
+                        .joinAll()
+
+                    // Then scroll back to the left
+                    delay(300)
+                    overflowingRows
+                        .map { index -> launch { scrollStates[index].animateScrollToStart() } }
+                        .joinAll()
                 }
             }
 
-            if (rowCount == 1) {
-                // Single compact row: place the action buttons side by side
-                textInputButton(
-                    Modifier.size(
-                        width = TERMINAL_KEYBOARD_WIDTH_DP.dp,
-                        height = TERMINAL_KEYBOARD_HEIGHT_DP.dp,
-                    ),
-                )
-                keyboardToggleButton(
-                    Modifier.size(
-                        width = TERMINAL_KEYBOARD_WIDTH_DP.dp,
-                        height = TERMINAL_KEYBOARD_HEIGHT_DP.dp,
-                    ),
-                )
-            } else {
-                // Multiple rows: stack the action buttons, splitting the height evenly
-                Column(modifier = Modifier.fillMaxHeight()) {
-                    textInputButton(Modifier.width(TERMINAL_KEYBOARD_WIDTH_DP.dp).weight(1f))
-                    keyboardToggleButton(Modifier.width(TERMINAL_KEYBOARD_WIDTH_DP.dp).weight(1f))
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Special keys, split across the configured number of rows
+                Column(modifier = Modifier.weight(1f)) {
+                    keyRows.forEachIndexed { index, rowKeys ->
+                        TerminalKeyRow(
+                            keys = rowKeys,
+                            // A row that fits stretches its keys, so it needs no scrolling
+                            scrollState = if (index in overflowingRows) scrollStates[index] else null,
+                        )
+                    }
+                }
+
+                if (rowCount == 1) {
+                    // Single compact row: place the action buttons side by side
+                    textInputButton(
+                        Modifier.size(
+                            width = TERMINAL_KEYBOARD_WIDTH_DP.dp,
+                            height = TERMINAL_KEYBOARD_HEIGHT_DP.dp,
+                        ),
+                    )
+                    keyboardToggleButton(
+                        Modifier.size(
+                            width = TERMINAL_KEYBOARD_WIDTH_DP.dp,
+                            height = TERMINAL_KEYBOARD_HEIGHT_DP.dp,
+                        ),
+                    )
+                } else {
+                    // Multiple rows: stack the action buttons, splitting the height evenly
+                    Column(modifier = Modifier.fillMaxHeight()) {
+                        textInputButton(Modifier.width(TERMINAL_KEYBOARD_WIDTH_DP.dp).weight(1f))
+                        keyboardToggleButton(Modifier.width(TERMINAL_KEYBOARD_WIDTH_DP.dp).weight(1f))
+                    }
                 }
             }
         }
@@ -559,8 +566,44 @@ internal fun TerminalKeyboardContent(
 }
 
 /**
+ * True when [keyCount] keys can share [availableWidth] without any of them getting too narrow to
+ * hit. Keys stretch past their natural width when there is room to spare, and squeeze a little
+ * below it rather than push the row into a scroll.
+ */
+private fun rowFitsWidth(keyCount: Int, availableWidth: Dp): Boolean = keyCount > 0 && availableWidth / keyCount >= TERMINAL_KEYBOARD_MIN_WIDTH_DP.dp
+
+private suspend fun ScrollState.animateScrollToEnd() = animateScrollTo(value = maxValue, animationSpec = tween(durationMillis = 500))
+
+private suspend fun ScrollState.animateScrollToStart() = animateScrollTo(value = 0, animationSpec = tween(durationMillis = 500))
+
+/**
+ * A single row of special keys. Keys share the whole width when the row fits, so no space is left
+ * unused; a row that cannot fit (typically the function keys) keeps them at their natural width
+ * and scrolls horizontally on its own.
+ */
+@Composable
+private fun TerminalKeyRow(
+    keys: List<TerminalKeyContent>,
+    scrollState: ScrollState?,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(TERMINAL_KEYBOARD_HEIGHT_DP.dp)
+            .then(if (scrollState != null) Modifier.horizontalScroll(scrollState) else Modifier),
+    ) {
+        keys.forEach { key ->
+            key(if (scrollState != null) Modifier else Modifier.weight(1f))
+        }
+    }
+}
+
+/**
  * A button for single-press keys (Ctrl, Esc, Tab, Home, End, PgUp, PgDn, F1-F12)
- * Styled to match the old keyboard layout: rectangular 45dp × 30dp with border
+ * Styled to match the old keyboard layout: rectangular 45dp × 30dp with border.
+ * The natural size is a default: a [modifier] carrying a width, such as the weight given by a row
+ * that stretches its keys, wins over it.
  */
 @Composable
 private fun KeyButton(
@@ -572,8 +615,9 @@ private fun KeyButton(
     backgroundColor: Color = MaterialTheme.colorScheme.surface.copy(alpha = UI_OPACITY),
     tint: Color = MaterialTheme.colorScheme.onSurface,
 ) {
-    val surfaceModifier = modifier
+    val surfaceModifier = Modifier
         .size(width = TERMINAL_KEYBOARD_WIDTH_DP.dp, height = TERMINAL_KEYBOARD_HEIGHT_DP.dp)
+        .then(modifier)
 
     val content: @Composable () -> Unit = {
         Box(
@@ -585,6 +629,9 @@ private fun KeyButton(
                     text = text,
                     style = MaterialTheme.typography.labelSmall,
                     color = tint,
+                    // A squeezed key is only one row tall, so a long label has to stay on one line
+                    maxLines = 1,
+                    softWrap = false,
                 )
             } else if (icon != null) {
                 Icon(
@@ -833,6 +880,63 @@ private fun TerminalKeyboardCtrlLockedPreview() {
             imeVisible = false,
             playAnimation = false,
             bumpyArrows = false,
+        )
+    }
+}
+
+@Preview(name = "Terminal Keyboard - Three Rows", showBackground = true, widthDp = 393)
+@Composable
+private fun TerminalKeyboardThreeRowsPreview() {
+    MaterialTheme {
+        TerminalKeyboardContent(
+            modifierState = ModifierState(
+                ctrlState = ModifierLevel.OFF,
+                altState = ModifierLevel.OFF,
+                shiftState = ModifierLevel.OFF,
+            ),
+            onCtrlPress = {},
+            onShiftPress = {},
+            onEscPress = {},
+            onTabPress = {},
+            onKeyPress = {},
+            onInteraction = {},
+            onHideIme = {},
+            onShowIme = {},
+            onOpenTextInput = {},
+            onScrollInProgressChange = {},
+            imeVisible = false,
+            playAnimation = false,
+            bumpyArrows = false,
+            rows = 3,
+        )
+    }
+}
+
+@Preview(name = "Terminal Keyboard - Three Rows, Two Function Keys", showBackground = true, widthDp = 393)
+@Composable
+private fun TerminalKeyboardThreeRowsTwoFunctionKeysPreview() {
+    MaterialTheme {
+        TerminalKeyboardContent(
+            modifierState = ModifierState(
+                ctrlState = ModifierLevel.OFF,
+                altState = ModifierLevel.OFF,
+                shiftState = ModifierLevel.OFF,
+            ),
+            onCtrlPress = {},
+            onShiftPress = {},
+            onEscPress = {},
+            onTabPress = {},
+            onKeyPress = {},
+            onInteraction = {},
+            onHideIme = {},
+            onShowIme = {},
+            onOpenTextInput = {},
+            onScrollInProgressChange = {},
+            imeVisible = false,
+            playAnimation = false,
+            bumpyArrows = false,
+            rows = 3,
+            functionKeyCount = 2,
         )
     }
 }

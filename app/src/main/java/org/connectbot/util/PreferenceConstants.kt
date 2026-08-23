@@ -63,6 +63,9 @@ object PreferenceConstants {
     const val SPECIAL_KEY_ROWS: String = "specialKeyRows"
     const val SPECIAL_KEY_ROWS_DEFAULT: String = "2"
 
+    const val SPECIAL_KEY_FUNCTION_KEYS: String = "specialKeyFunctionKeys"
+    const val SPECIAL_KEY_FUNCTION_KEYS_DEFAULT: String = "12"
+
     const val KEYBOARD_RESTORE_ON_RESUME: String = "keyboardRestoreOnResume"
     const val KEYBOARD_RESTORE_ON_RESUME_DEFAULT: Boolean = true
 

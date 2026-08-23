@@ -38,6 +38,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 
 @HiltAndroidTest
 @RunWith(AndroidJUnit4::class)
@@ -158,10 +159,13 @@ class TerminalKeyboardContentTest {
     }
 
     @Test
+    @Config(qualifiers = "+w320dp-h640dp")
     fun terminalKeyboardContent_reportsHorizontalScrollInteractions() {
         val scrollStates = mutableListOf<Boolean>()
 
+        // One row on a phone-width screen: far more keys than fit, so the row scrolls
         setKeyboardContent(
+            rows = 1,
             onScrollInProgressChange = { scrollStates += it },
         )
 
@@ -170,6 +174,42 @@ class TerminalKeyboardContentTest {
             .performTouchInput { swipeLeft() }
 
         assertTrue(scrollStates.isNotEmpty())
+    }
+
+    @Test
+    fun terminalKeyboardContent_threeRowsEndWithEnterOnStretchedKeys() {
+        val pressedKeys = mutableListOf<Int>()
+
+        setKeyboardContent(rows = 3, onKeyPress = { pressedKeys += it })
+
+        val ctrl = composeTestRule
+            .onNodeWithText(composeTestRule.activity.getString(R.string.button_key_ctrl))
+            .fetchSemanticsNode()
+        val enter = composeTestRule
+            .onNodeWithText(composeTestRule.activity.getString(R.string.button_key_enter))
+            .assertIsDisplayed()
+        val enterNode = enter.fetchSemanticsNode()
+
+        // Enter closes the bottom row, below the first row that holds Ctrl
+        assertTrue(enterNode.positionInRoot.y > ctrl.positionInRoot.y)
+        // Both rows fill the width, and the bottom one holds fewer keys, so its keys are wider
+        assertTrue(enterNode.size.width > ctrl.size.width)
+
+        enter.performClick()
+
+        assertEquals(listOf(VTermKey.ENTER), pressedKeys)
+    }
+
+    @Test
+    fun terminalKeyboardContent_functionKeyCountTrimsTheFunctionRow() {
+        setKeyboardContent(rows = 3, functionKeyCount = 2)
+
+        composeTestRule
+            .onNodeWithText(composeTestRule.activity.getString(R.string.button_key_f2))
+            .assertIsDisplayed()
+        composeTestRule
+            .onNodeWithText(composeTestRule.activity.getString(R.string.button_key_f3))
+            .assertDoesNotExist()
     }
 
     private fun setKeyboardContent(
@@ -190,6 +230,8 @@ class TerminalKeyboardContentTest {
         onScrollInProgressChange: (Boolean) -> Unit = {},
         imeVisible: Boolean = false,
         bumpyArrows: Boolean = false,
+        rows: Int = 2,
+        functionKeyCount: Int = 12,
     ) {
         composeTestRule.setContent {
             ConnectBotTheme {
@@ -208,6 +250,8 @@ class TerminalKeyboardContentTest {
                     imeVisible = imeVisible,
                     playAnimation = false,
                     bumpyArrows = bumpyArrows,
+                    rows = rows,
+                    functionKeyCount = functionKeyCount,
                 )
             }
         }

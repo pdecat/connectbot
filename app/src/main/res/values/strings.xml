@@ -299,6 +299,12 @@
 	<!-- Title for the number of special-key rows preference -->
 	<string name="pref_specialkeyrows_title">Special key rows</string>
 
+	<!-- Title for the preference choosing how many function keys, from F1 upwards, the special key
+	     bar shows. Fewer function keys means their row no longer has to scroll. -->
+	<string name="pref_specialkeyfunctionkeys_title">Function keys</string>
+	<!-- Entry in the function keys preference that leaves every function key off the special key bar -->
+	<string name="pref_specialkeyfunctionkeys_none">None</string>
+
 	<!-- Name for the page up/down gesture preference -->
 	<string name="pref_pg_updn_gesture_title">"Page up/down gesture"</string>
 	<!-- Summary for the full screen preference -->

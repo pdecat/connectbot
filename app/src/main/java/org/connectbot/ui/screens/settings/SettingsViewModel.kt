@@ -73,6 +73,7 @@ data class SettingsUiState(
     val camera: String = "Ctrl+A then Space",
     val bumpyarrows: Boolean = true,
     val specialKeyRows: String = "2",
+    val specialKeyFunctionKeys: String = "12",
     val keyboardRestoreOnResume: Boolean = true,
     val bell: Boolean = true,
     val bellVolume: Float = 0.5f,
@@ -216,6 +217,10 @@ class SettingsViewModel @Inject constructor(
                 PreferenceConstants.SPECIAL_KEY_ROWS,
                 PreferenceConstants.SPECIAL_KEY_ROWS_DEFAULT,
             ) ?: PreferenceConstants.SPECIAL_KEY_ROWS_DEFAULT,
+            specialKeyFunctionKeys = prefs.getString(
+                PreferenceConstants.SPECIAL_KEY_FUNCTION_KEYS,
+                PreferenceConstants.SPECIAL_KEY_FUNCTION_KEYS_DEFAULT,
+            ) ?: PreferenceConstants.SPECIAL_KEY_FUNCTION_KEYS_DEFAULT,
             keyboardRestoreOnResume = prefs.getBoolean(
                 PreferenceConstants.KEYBOARD_RESTORE_ON_RESUME,
                 PreferenceConstants.KEYBOARD_RESTORE_ON_RESUME_DEFAULT,
@@ -353,6 +358,10 @@ class SettingsViewModel @Inject constructor(
 
     fun updateSpecialKeyRows(value: String) {
         updateStringPref(PreferenceConstants.SPECIAL_KEY_ROWS, value) { copy(specialKeyRows = value) }
+    }
+
+    fun updateSpecialKeyFunctionKeys(value: String) {
+        updateStringPref(PreferenceConstants.SPECIAL_KEY_FUNCTION_KEYS, value) { copy(specialKeyFunctionKeys = value) }
     }
 
     fun updateKeyboardRestoreOnResume(value: Boolean) {
