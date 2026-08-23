@@ -973,6 +973,10 @@
 	<string name="button_key_esc">Esc</string>
 	<!-- Text for the "Enter" button in virtual keyboard. -->
 	<string name="button_key_enter">Enter</string>
+
+	<!-- Describes the "⌫" button in the virtual keyboard, which erases the character before the
+	     cursor, for accessibility purposes. -->
+	<string name="image_description_send_backspace_character">Send backspace character</string>
 	<!-- Text for the "Ctrl" button in virtual keyboard. -->
 	<string name="button_key_ctrl">Ctrl</string>
 	<!-- Text for the "Shift" button in virtual keyboard. -->

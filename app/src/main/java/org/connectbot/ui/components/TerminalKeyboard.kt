@@ -81,6 +81,7 @@ import org.connectbot.service.ModifierLevel
 import org.connectbot.service.ModifierState
 import org.connectbot.service.TerminalBridge
 import org.connectbot.service.TerminalKeyListener
+import org.connectbot.terminal.DelKeyMode
 import org.connectbot.terminal.VTermKey
 import org.connectbot.util.PreferenceConstants
 
@@ -192,6 +193,8 @@ fun TerminalKeyboard(
     val prefs = remember { PreferenceManager.getDefaultSharedPreferences(context) }
     val keyHandler = bridge.keyHandler
     val modifierState by keyHandler.modifierState.collectAsState()
+    // The bar's Backspace follows the host's DEL key setting, like the IME's own backspace
+    val delKeyMode by bridge.delKeyModeFlow.collectAsState()
     val bumpyArrows by remember {
         mutableStateOf(prefs.getBoolean(PreferenceConstants.BUMPY_ARROWS, false))
     }
@@ -214,6 +217,10 @@ fun TerminalKeyboard(
         },
         onTabPress = {
             keyHandler.sendTab()
+            onInteraction()
+        },
+        onBackspacePress = {
+            keyHandler.sendBackspace(asCharacter = delKeyMode is DelKeyMode.Backspace)
             onInteraction()
         },
         onKeyPress = { key ->
@@ -245,6 +252,7 @@ internal fun TerminalKeyboardContent(
     onShiftPress: () -> Unit,
     onEscPress: () -> Unit,
     onTabPress: () -> Unit,
+    onBackspacePress: () -> Unit,
     onKeyPress: (Int) -> Unit,
     onInteraction: () -> Unit,
     onHideIme: () -> Unit,
@@ -410,13 +418,25 @@ internal fun TerminalKeyboardContent(
         }
     }
 
-    val enterKey: TerminalKeyContent = { keyModifier ->
-        KeyButton(
-            text = stringResource(R.string.button_key_enter),
-            contentDescription = null,
-            onClick = { onKeyPress(VTermKey.ENTER) },
-            modifier = keyModifier,
-        )
+    // Backspace and Enter, the pair that ends the bottom row so Enter lands bottom right like the
+    // IME's own, with Backspace to its left
+    val editKeys: List<TerminalKeyContent> = buildList {
+        add { keyModifier ->
+            KeyButton(
+                text = "⌫", // Backspace symbol
+                contentDescription = stringResource(R.string.image_description_send_backspace_character),
+                onClick = onBackspacePress,
+                modifier = keyModifier,
+            )
+        }
+        add { keyModifier ->
+            KeyButton(
+                text = stringResource(R.string.button_key_enter),
+                contentDescription = null,
+                onClick = { onKeyPress(VTermKey.ENTER) },
+                modifier = keyModifier,
+            )
+        }
     }
 
     val functionKeys: List<TerminalKeyContent> =
@@ -436,11 +456,11 @@ internal fun TerminalKeyboardContent(
     // overflow, and Enter closes the bottom row so it sits bottom right like on the IME. Fewer
     // rows keep the historical order, with Enter immediately to the left of F1.
     val keyRows: List<List<TerminalKeyContent>> = when {
-        rowCount == 1 -> listOf(modifierKeys + arrowKeys + pagingKeys + listOf(enterKey) + functionKeys)
-        rowCount == 2 && functionKeys.isEmpty() -> listOf(modifierKeys + pagingKeys, arrowKeys + listOf(enterKey))
-        rowCount == 2 -> listOf(modifierKeys + arrowKeys + pagingKeys, listOf(enterKey) + functionKeys)
-        functionKeys.isEmpty() -> listOf(modifierKeys, pagingKeys, arrowKeys + listOf(enterKey))
-        else -> listOf(modifierKeys + pagingKeys, functionKeys, arrowKeys + listOf(enterKey))
+        rowCount == 1 -> listOf(modifierKeys + arrowKeys + pagingKeys + editKeys + functionKeys)
+        rowCount == 2 && functionKeys.isEmpty() -> listOf(modifierKeys + pagingKeys, arrowKeys + editKeys)
+        rowCount == 2 -> listOf(modifierKeys + arrowKeys + pagingKeys, editKeys + functionKeys)
+        functionKeys.isEmpty() -> listOf(modifierKeys, pagingKeys, arrowKeys + editKeys)
+        else -> listOf(modifierKeys + pagingKeys, functionKeys, arrowKeys + editKeys)
     }
 
     // Action buttons (always visible). The caller decides their size via the modifier.
@@ -496,12 +516,21 @@ internal fun TerminalKeyboardContent(
                 .fillMaxWidth()
                 .height((rowCount * TERMINAL_KEYBOARD_HEIGHT_DP).dp),
         ) {
-            // The action buttons on the right take one key width per column: two columns on a
-            // single row, one column of stacked buttons otherwise
-            val actionButtonColumns = if (rowCount == 1) 2 else 1
-            val keyAreaWidth = maxWidth - TERMINAL_KEYBOARD_WIDTH_DP.dp * actionButtonColumns
+            // The action buttons sit at the right end of the first two rows, side by side when
+            // that is all there is. Any row below them, so the bottom one of three, has no button
+            // to leave room for and runs the full width instead.
+            val actionButtonsOnRow = { row: Int ->
+                if (rowCount == 1) {
+                    2
+                } else if (row < 2) {
+                    1
+                } else {
+                    0
+                }
+            }
+            val keyAreaWidth = { row: Int -> maxWidth - TERMINAL_KEYBOARD_WIDTH_DP.dp * actionButtonsOnRow(row) }
             val overflowingRows = keyRows.indices.filter { index ->
-                !rowFitsWidth(keyRows[index].size, keyAreaWidth)
+                !rowFitsWidth(keyRows[index].size, keyAreaWidth(index))
             }
 
             // Auto-scroll animation on first appearance (only if playAnimation is true), on
@@ -524,40 +553,31 @@ internal fun TerminalKeyboardContent(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // Special keys, split across the configured number of rows
-                Column(modifier = Modifier.weight(1f)) {
-                    keyRows.forEachIndexed { index, rowKeys ->
+            val actionButtonModifier = Modifier.size(
+                width = TERMINAL_KEYBOARD_WIDTH_DP.dp,
+                height = TERMINAL_KEYBOARD_HEIGHT_DP.dp,
+            )
+
+            // Special keys, split across the configured number of rows
+            Column(modifier = Modifier.fillMaxSize()) {
+                keyRows.forEachIndexed { index, rowKeys ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(TERMINAL_KEYBOARD_HEIGHT_DP.dp),
+                    ) {
                         TerminalKeyRow(
                             keys = rowKeys,
                             // A row that fits stretches its keys, so it needs no scrolling
                             scrollState = if (index in overflowingRows) scrollStates[index] else null,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                         )
-                    }
-                }
-
-                if (rowCount == 1) {
-                    // Single compact row: place the action buttons side by side
-                    textInputButton(
-                        Modifier.size(
-                            width = TERMINAL_KEYBOARD_WIDTH_DP.dp,
-                            height = TERMINAL_KEYBOARD_HEIGHT_DP.dp,
-                        ),
-                    )
-                    keyboardToggleButton(
-                        Modifier.size(
-                            width = TERMINAL_KEYBOARD_WIDTH_DP.dp,
-                            height = TERMINAL_KEYBOARD_HEIGHT_DP.dp,
-                        ),
-                    )
-                } else {
-                    // Multiple rows: stack the action buttons, splitting the height evenly
-                    Column(modifier = Modifier.fillMaxHeight()) {
-                        textInputButton(Modifier.width(TERMINAL_KEYBOARD_WIDTH_DP.dp).weight(1f))
-                        keyboardToggleButton(Modifier.width(TERMINAL_KEYBOARD_WIDTH_DP.dp).weight(1f))
+                        if (index == 0) {
+                            textInputButton(actionButtonModifier)
+                        }
+                        if (index == 1 || rowCount == 1) {
+                            keyboardToggleButton(actionButtonModifier)
+                        }
                     }
                 }
             }
@@ -589,8 +609,6 @@ private fun TerminalKeyRow(
 ) {
     Row(
         modifier = modifier
-            .fillMaxWidth()
-            .height(TERMINAL_KEYBOARD_HEIGHT_DP.dp)
             .then(if (scrollState != null) Modifier.horizontalScroll(scrollState) else Modifier),
     ) {
         keys.forEach { key ->
@@ -817,6 +835,7 @@ private fun TerminalKeyboardPreview() {
             onShiftPress = {},
             onEscPress = {},
             onTabPress = {},
+            onBackspacePress = {},
             onKeyPress = {},
             onInteraction = {},
             onHideIme = {},
@@ -844,6 +863,7 @@ private fun TerminalKeyboardCtrlPressedPreview() {
             onShiftPress = {},
             onEscPress = {},
             onTabPress = {},
+            onBackspacePress = {},
             onKeyPress = {},
             onInteraction = {},
             onHideIme = {},
@@ -871,6 +891,7 @@ private fun TerminalKeyboardCtrlLockedPreview() {
             onShiftPress = {},
             onEscPress = {},
             onTabPress = {},
+            onBackspacePress = {},
             onKeyPress = {},
             onInteraction = {},
             onHideIme = {},
@@ -898,6 +919,7 @@ private fun TerminalKeyboardThreeRowsPreview() {
             onShiftPress = {},
             onEscPress = {},
             onTabPress = {},
+            onBackspacePress = {},
             onKeyPress = {},
             onInteraction = {},
             onHideIme = {},
@@ -926,6 +948,7 @@ private fun TerminalKeyboardThreeRowsTwoFunctionKeysPreview() {
             onShiftPress = {},
             onEscPress = {},
             onTabPress = {},
+            onBackspacePress = {},
             onKeyPress = {},
             onInteraction = {},
             onHideIme = {},
@@ -955,6 +978,7 @@ private fun TerminalKeyboardImeVisiblePreview() {
             onShiftPress = {},
             onEscPress = {},
             onTabPress = {},
+            onBackspacePress = {},
             onKeyPress = {},
             onInteraction = {},
             onHideIme = {},

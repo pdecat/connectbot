@@ -41,12 +41,20 @@ private const val VTERM_MOD_SHIFT = 1
 private const val VTERM_MOD_ALT = 2
 private const val VTERM_MOD_CTRL = 4
 
-fun interface KeyDispatcher {
+// The byte a host expects from backspace when its DEL key is set to backspace rather than delete
+private const val BACKSPACE_CHARACTER = 0x08
+
+interface KeyDispatcher {
     fun dispatchKey(modifiers: Int, key: Int)
+
+    /** Sends a raw character, for the keys a host wants as a control byte rather than a VTerm key. */
+    fun dispatchCharacter(modifiers: Int, character: Int)
 }
 
 class TerminalEmulatorKeyDispatcher(private val emulator: TerminalEmulator) : KeyDispatcher {
     override fun dispatchKey(modifiers: Int, key: Int) = emulator.dispatchKey(modifiers, key)
+
+    override fun dispatchCharacter(modifiers: Int, character: Int) = emulator.dispatchCharacter(modifiers, character)
 }
 
 enum class StickyModifierSetting(internal val mask: Int) {
@@ -98,6 +106,22 @@ class TerminalKeyListener(
 
     fun sendPressedKey(key: Int) {
         keyDispatcher.dispatchKey(modifiersForTerminal, key)
+        clearTransients()
+    }
+
+    /**
+     * Sends Backspace the way the IME's own backspace goes out, so the bar's key does not disagree
+     * with it: the 0x08 character when the host's DEL key is set to backspace, the VTerm backspace
+     * key (which the terminal sends as 0x7f) otherwise.
+     *
+     * @param asCharacter host profile has its DEL key set to backspace.
+     */
+    fun sendBackspace(asCharacter: Boolean) {
+        if (asCharacter) {
+            keyDispatcher.dispatchCharacter(modifiersForTerminal, BACKSPACE_CHARACTER)
+        } else {
+            keyDispatcher.dispatchKey(modifiersForTerminal, VTermKey.BACKSPACE)
+        }
         clearTransients()
     }
 

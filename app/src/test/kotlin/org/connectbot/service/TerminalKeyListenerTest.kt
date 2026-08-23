@@ -27,13 +27,22 @@ private const val VTERM_MOD_CTRL = 4
 
 class TerminalKeyListenerTest {
 
-    private val noopDispatcher = KeyDispatcher { _, _ -> }
+    private val noopDispatcher = object : KeyDispatcher {
+        override fun dispatchKey(modifiers: Int, key: Int) = Unit
+
+        override fun dispatchCharacter(modifiers: Int, character: Int) = Unit
+    }
 
     private class RecordingDispatcher : KeyDispatcher {
         val dispatched = mutableListOf<Pair<Int, Int>>()
+        val dispatchedCharacters = mutableListOf<Pair<Int, Int>>()
 
         override fun dispatchKey(modifiers: Int, key: Int) {
             dispatched += modifiers to key
+        }
+
+        override fun dispatchCharacter(modifiers: Int, character: Int) {
+            dispatchedCharacters += modifiers to character
         }
     }
 
@@ -145,6 +154,36 @@ class TerminalKeyListenerTest {
         listener.sendTab()
         assertEquals(listOf(VTERM_MOD_SHIFT to VTermKey.TAB), dispatcher.dispatched)
         assertEquals(ModifierLevel.OFF, listener.getModifierState().shiftState)
+    }
+
+    // sendBackspace follows the host's DEL key setting, the same split the IME's backspace makes.
+
+    @Test
+    fun `sendBackspace dispatches the vterm backspace key by default`() {
+        val dispatcher = RecordingDispatcher()
+        val listener = TerminalKeyListener(dispatcher, StickyModifierSetting.ALL)
+        listener.sendBackspace(asCharacter = false)
+        assertEquals(listOf(0 to VTermKey.BACKSPACE), dispatcher.dispatched)
+        assertEquals(emptyList<Pair<Int, Int>>(), dispatcher.dispatchedCharacters)
+    }
+
+    @Test
+    fun `sendBackspace dispatches the backspace character when the host asks for it`() {
+        val dispatcher = RecordingDispatcher()
+        val listener = TerminalKeyListener(dispatcher, StickyModifierSetting.ALL)
+        listener.sendBackspace(asCharacter = true)
+        assertEquals(listOf(0 to 0x08), dispatcher.dispatchedCharacters)
+        assertEquals(emptyList<Pair<Int, Int>>(), dispatcher.dispatched)
+    }
+
+    @Test
+    fun `sendBackspace carries the active modifiers and clears them`() {
+        val dispatcher = RecordingDispatcher()
+        val listener = TerminalKeyListener(dispatcher, StickyModifierSetting.ALL)
+        listener.metaPress(TerminalKeyListener.CTRL_ON)
+        listener.sendBackspace(asCharacter = false)
+        assertEquals(listOf(VTERM_MOD_CTRL to VTermKey.BACKSPACE), dispatcher.dispatched)
+        assertEquals(ModifierLevel.OFF, listener.getModifierState().ctrlState)
     }
 
     @Test

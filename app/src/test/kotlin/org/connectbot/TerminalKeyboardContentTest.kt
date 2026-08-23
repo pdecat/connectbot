@@ -201,6 +201,26 @@ class TerminalKeyboardContentTest {
     }
 
     @Test
+    fun terminalKeyboardContent_threeRowsPutBackspaceLeftOfEnterOnTheLastRow() {
+        var backspacePressed = false
+
+        setKeyboardContent(rows = 3, onBackspacePress = { backspacePressed = true })
+
+        val backspace = composeTestRule.onNodeWithText("⌫").assertIsDisplayed()
+        val backspaceNode = backspace.fetchSemanticsNode()
+        val enterNode = composeTestRule
+            .onNodeWithText(composeTestRule.activity.getString(R.string.button_key_enter))
+            .fetchSemanticsNode()
+
+        assertEquals(enterNode.positionInRoot.y, backspaceNode.positionInRoot.y)
+        assertTrue(backspaceNode.positionInRoot.x < enterNode.positionInRoot.x)
+
+        backspace.performClick()
+
+        assertTrue(backspacePressed)
+    }
+
+    @Test
     fun terminalKeyboardContent_functionKeyCountTrimsTheFunctionRow() {
         setKeyboardContent(rows = 3, functionKeyCount = 2)
 
@@ -222,6 +242,7 @@ class TerminalKeyboardContentTest {
         onShiftPress: () -> Unit = {},
         onEscPress: () -> Unit = {},
         onTabPress: () -> Unit = {},
+        onBackspacePress: () -> Unit = {},
         onKeyPress: (Int) -> Unit = {},
         onInteraction: () -> Unit = {},
         onHideIme: () -> Unit = {},
@@ -241,6 +262,7 @@ class TerminalKeyboardContentTest {
                     onShiftPress = onShiftPress,
                     onEscPress = onEscPress,
                     onTabPress = onTabPress,
+                    onBackspacePress = onBackspacePress,
                     onKeyPress = onKeyPress,
                     onInteraction = onInteraction,
                     onHideIme = onHideIme,
