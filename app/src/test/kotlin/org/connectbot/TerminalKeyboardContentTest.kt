@@ -201,23 +201,37 @@ class TerminalKeyboardContentTest {
     }
 
     @Test
-    fun terminalKeyboardContent_threeRowsPutBackspaceLeftOfEnterOnTheLastRow() {
+    fun terminalKeyboardContent_threeRowsEndTheLastRowWithBackspaceSpaceEnter() {
         var backspacePressed = false
+        var spacePressed = false
 
-        setKeyboardContent(rows = 3, onBackspacePress = { backspacePressed = true })
+        setKeyboardContent(
+            rows = 3,
+            onBackspacePress = { backspacePressed = true },
+            onSpacePress = { spacePressed = true },
+        )
 
         val backspace = composeTestRule.onNodeWithText("⌫").assertIsDisplayed()
+        val space = composeTestRule
+            .onNodeWithText(composeTestRule.activity.getString(R.string.button_key_space))
+            .assertIsDisplayed()
         val backspaceNode = backspace.fetchSemanticsNode()
+        val spaceNode = space.fetchSemanticsNode()
         val enterNode = composeTestRule
             .onNodeWithText(composeTestRule.activity.getString(R.string.button_key_enter))
             .fetchSemanticsNode()
 
+        // All three share the bottom row, in the IME's order
         assertEquals(enterNode.positionInRoot.y, backspaceNode.positionInRoot.y)
-        assertTrue(backspaceNode.positionInRoot.x < enterNode.positionInRoot.x)
+        assertEquals(enterNode.positionInRoot.y, spaceNode.positionInRoot.y)
+        assertTrue(backspaceNode.positionInRoot.x < spaceNode.positionInRoot.x)
+        assertTrue(spaceNode.positionInRoot.x < enterNode.positionInRoot.x)
 
         backspace.performClick()
+        space.performClick()
 
         assertTrue(backspacePressed)
+        assertTrue(spacePressed)
     }
 
     @Test
@@ -243,6 +257,7 @@ class TerminalKeyboardContentTest {
         onEscPress: () -> Unit = {},
         onTabPress: () -> Unit = {},
         onBackspacePress: () -> Unit = {},
+        onSpacePress: () -> Unit = {},
         onKeyPress: (Int) -> Unit = {},
         onInteraction: () -> Unit = {},
         onHideIme: () -> Unit = {},
@@ -263,6 +278,7 @@ class TerminalKeyboardContentTest {
                     onEscPress = onEscPress,
                     onTabPress = onTabPress,
                     onBackspacePress = onBackspacePress,
+                    onSpacePress = onSpacePress,
                     onKeyPress = onKeyPress,
                     onInteraction = onInteraction,
                     onHideIme = onHideIme,

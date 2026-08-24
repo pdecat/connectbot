@@ -973,6 +973,8 @@
 	<string name="button_key_esc">Esc</string>
 	<!-- Text for the "Enter" button in virtual keyboard. -->
 	<string name="button_key_enter">Enter</string>
+	<!-- Text for the "Space" button in virtual keyboard, which sends a space character. -->
+	<string name="button_key_space">Space</string>
 
 	<!-- Describes the "⌫" button in the virtual keyboard, which erases the character before the
 	     cursor, for accessibility purposes. -->

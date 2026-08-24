@@ -223,6 +223,10 @@ fun TerminalKeyboard(
             keyHandler.sendBackspace(asCharacter = delKeyMode is DelKeyMode.Backspace)
             onInteraction()
         },
+        onSpacePress = {
+            keyHandler.sendSpace()
+            onInteraction()
+        },
         onKeyPress = { key ->
             keyHandler.sendPressedKey(key)
             onInteraction()
@@ -253,6 +257,7 @@ internal fun TerminalKeyboardContent(
     onEscPress: () -> Unit,
     onTabPress: () -> Unit,
     onBackspacePress: () -> Unit,
+    onSpacePress: () -> Unit,
     onKeyPress: (Int) -> Unit,
     onInteraction: () -> Unit,
     onHideIme: () -> Unit,
@@ -418,14 +423,22 @@ internal fun TerminalKeyboardContent(
         }
     }
 
-    // Backspace and Enter, the pair that ends the bottom row so Enter lands bottom right like the
-    // IME's own, with Backspace to its left
+    // Backspace, Space and Enter, the group that ends the bottom row in the IME's own order, so
+    // Enter lands bottom right with Space to its left
     val editKeys: List<TerminalKeyContent> = buildList {
         add { keyModifier ->
             KeyButton(
                 text = "⌫", // Backspace symbol
                 contentDescription = stringResource(R.string.image_description_send_backspace_character),
                 onClick = onBackspacePress,
+                modifier = keyModifier,
+            )
+        }
+        add { keyModifier ->
+            KeyButton(
+                text = stringResource(R.string.button_key_space),
+                contentDescription = null,
+                onClick = onSpacePress,
                 modifier = keyModifier,
             )
         }
@@ -836,6 +849,7 @@ private fun TerminalKeyboardPreview() {
             onEscPress = {},
             onTabPress = {},
             onBackspacePress = {},
+            onSpacePress = {},
             onKeyPress = {},
             onInteraction = {},
             onHideIme = {},
@@ -864,6 +878,7 @@ private fun TerminalKeyboardCtrlPressedPreview() {
             onEscPress = {},
             onTabPress = {},
             onBackspacePress = {},
+            onSpacePress = {},
             onKeyPress = {},
             onInteraction = {},
             onHideIme = {},
@@ -892,6 +907,7 @@ private fun TerminalKeyboardCtrlLockedPreview() {
             onEscPress = {},
             onTabPress = {},
             onBackspacePress = {},
+            onSpacePress = {},
             onKeyPress = {},
             onInteraction = {},
             onHideIme = {},
@@ -920,6 +936,7 @@ private fun TerminalKeyboardThreeRowsPreview() {
             onEscPress = {},
             onTabPress = {},
             onBackspacePress = {},
+            onSpacePress = {},
             onKeyPress = {},
             onInteraction = {},
             onHideIme = {},
@@ -949,6 +966,7 @@ private fun TerminalKeyboardThreeRowsTwoFunctionKeysPreview() {
             onEscPress = {},
             onTabPress = {},
             onBackspacePress = {},
+            onSpacePress = {},
             onKeyPress = {},
             onInteraction = {},
             onHideIme = {},
@@ -979,6 +997,7 @@ private fun TerminalKeyboardImeVisiblePreview() {
             onEscPress = {},
             onTabPress = {},
             onBackspacePress = {},
+            onSpacePress = {},
             onKeyPress = {},
             onInteraction = {},
             onHideIme = {},

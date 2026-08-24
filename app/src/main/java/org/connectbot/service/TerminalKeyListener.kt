@@ -44,6 +44,9 @@ private const val VTERM_MOD_CTRL = 4
 // The byte a host expects from backspace when its DEL key is set to backspace rather than delete
 private const val BACKSPACE_CHARACTER = 0x08
 
+// Space has no VTerm key of its own, it goes out as the character
+private const val SPACE_CHARACTER = 0x20
+
 interface KeyDispatcher {
     fun dispatchKey(modifiers: Int, key: Int)
 
@@ -106,6 +109,15 @@ class TerminalKeyListener(
 
     fun sendPressedKey(key: Int) {
         keyDispatcher.dispatchKey(modifiersForTerminal, key)
+        clearTransients()
+    }
+
+    /**
+     * Sends a space with whatever modifiers are currently active, so the on-screen Ctrl key still
+     * turns it into the NUL that shells and editors bind.
+     */
+    fun sendSpace() {
+        keyDispatcher.dispatchCharacter(modifiersForTerminal, SPACE_CHARACTER)
         clearTransients()
     }
 

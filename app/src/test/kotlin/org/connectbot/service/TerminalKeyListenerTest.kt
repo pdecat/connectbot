@@ -156,6 +156,27 @@ class TerminalKeyListenerTest {
         assertEquals(ModifierLevel.OFF, listener.getModifierState().shiftState)
     }
 
+    // sendSpace goes out as a character, and Ctrl+Space still has to reach the terminal as NUL.
+
+    @Test
+    fun `sendSpace dispatches a space character`() {
+        val dispatcher = RecordingDispatcher()
+        val listener = TerminalKeyListener(dispatcher, StickyModifierSetting.ALL)
+        listener.sendSpace()
+        assertEquals(listOf(0 to 0x20), dispatcher.dispatchedCharacters)
+        assertEquals(emptyList<Pair<Int, Int>>(), dispatcher.dispatched)
+    }
+
+    @Test
+    fun `sendSpace carries the active modifiers and clears them`() {
+        val dispatcher = RecordingDispatcher()
+        val listener = TerminalKeyListener(dispatcher, StickyModifierSetting.ALL)
+        listener.metaPress(TerminalKeyListener.CTRL_ON)
+        listener.sendSpace()
+        assertEquals(listOf(VTERM_MOD_CTRL to 0x20), dispatcher.dispatchedCharacters)
+        assertEquals(ModifierLevel.OFF, listener.getModifierState().ctrlState)
+    }
+
     // sendBackspace follows the host's DEL key setting, the same split the IME's backspace makes.
 
     @Test
