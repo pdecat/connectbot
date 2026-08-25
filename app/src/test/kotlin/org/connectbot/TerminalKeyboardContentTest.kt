@@ -221,17 +221,42 @@ class TerminalKeyboardContentTest {
             .onNodeWithText(composeTestRule.activity.getString(R.string.button_key_enter))
             .fetchSemanticsNode()
 
-        // All three share the bottom row, in the IME's order
-        assertEquals(enterNode.positionInRoot.y, backspaceNode.positionInRoot.y)
-        assertEquals(enterNode.positionInRoot.y, spaceNode.positionInRoot.y)
+        // All three share the bottom row, in the IME's order. Backspace repeats, so it is not
+        // clickable and reports its centred label rather than a node spanning the whole key,
+        // which is why this compares against the row's band rather than against Enter's top.
+        val rowTop = enterNode.positionInRoot.y
+        val rowBottom = rowTop + enterNode.size.height
+        assertTrue(backspaceNode.boundsInRoot.center.y in rowTop..rowBottom)
+        assertTrue(spaceNode.boundsInRoot.center.y in rowTop..rowBottom)
         assertTrue(backspaceNode.positionInRoot.x < spaceNode.positionInRoot.x)
         assertTrue(spaceNode.positionInRoot.x < enterNode.positionInRoot.x)
 
-        backspace.performClick()
+        // Backspace repeats on hold, so it reacts to a touch rather than to a click action
+        backspace.performTouchInput {
+            down(center)
+            up()
+        }
         space.performClick()
 
         assertTrue(backspacePressed)
         assertTrue(spacePressed)
+    }
+
+    @Test
+    fun terminalKeyboardContent_backspaceRepeatsWhileHeld() {
+        var pressCount = 0
+
+        setKeyboardContent(rows = 3, onBackspacePress = { pressCount++ })
+
+        val backspace = composeTestRule.onNodeWithText("⌫")
+        composeTestRule.mainClock.autoAdvance = false
+        backspace.performTouchInput { down(center) }
+        // Past the initial tap timeout and the repeat delay, then a few repeat intervals
+        composeTestRule.mainClock.advanceTimeBy(1000)
+        backspace.performTouchInput { up() }
+        composeTestRule.mainClock.autoAdvance = true
+
+        assertTrue("expected repeats while held, got $pressCount", pressCount > 1)
     }
 
     @Test

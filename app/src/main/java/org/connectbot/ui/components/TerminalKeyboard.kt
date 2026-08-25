@@ -426,11 +426,12 @@ internal fun TerminalKeyboardContent(
     // Backspace, Space and Enter, the group that ends the bottom row in the IME's own order, so
     // Enter lands bottom right with Space to its left
     val editKeys: List<TerminalKeyContent> = buildList {
+        // Repeatable, like the arrows: holding it erases a whole word or line
         add { keyModifier ->
-            KeyButton(
+            RepeatableKeyButton(
                 text = "⌫", // Backspace symbol
                 contentDescription = stringResource(R.string.image_description_send_backspace_character),
-                onClick = onBackspacePress,
+                onPress = onBackspacePress,
                 modifier = keyModifier,
             )
         }
@@ -727,16 +728,17 @@ private fun TerminalKeyboardActionButton(
 }
 
 /**
- * A button for repeatable keys (arrow keys)
+ * A button for repeatable keys (the arrows and Backspace)
  * Starts repeating after initial delay when held down
  * Styled to match the old keyboard layout: rectangular 45dp × 30dp with border
  */
 @Composable
 private fun RepeatableKeyButton(
-    icon: ImageVector,
     contentDescription: String?,
     onPress: () -> Unit,
     modifier: Modifier = Modifier,
+    text: String? = null,
+    icon: ImageVector? = null,
 ) {
     val coroutineScope = rememberCoroutineScope()
     var isPressed by remember { mutableStateOf(false) }
@@ -757,6 +759,7 @@ private fun RepeatableKeyButton(
         }
 
     KeyButton(
+        text = text,
         icon = icon,
         contentDescription = contentDescription,
         onClick = null,
