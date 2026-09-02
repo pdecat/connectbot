@@ -694,14 +694,18 @@ class TerminalBridge {
      * ready to read.
      */
     private fun schedulePostLogin() {
-        val commands = host.postLogin
-        if (commands.isNullOrEmpty()) return
+        val postLogin = host.postLogin
+        if (postLogin.isNullOrEmpty()) return
 
         if (!isSessionOpen) {
             // Without a session there is nothing on the far end to read them.
             Timber.d("No session for ${host.nickname}, skipping post-login automation")
             return
         }
+
+        // Only post-login is entered for the user; a clipboard paste through
+        // injectString must never enter itself.
+        val commands = postLoginAsTyped(postLogin)
 
         postLoginJob?.cancel()
 
