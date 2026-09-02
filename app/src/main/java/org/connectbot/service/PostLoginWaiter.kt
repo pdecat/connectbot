@@ -22,6 +22,25 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
+ * Turn the post-login field into the keystrokes the user would have typed.
+ *
+ * Typing a command is not the same as running it: with no terminator the last
+ * one just sits on the prompt. The text box also produces plain line feeds,
+ * which a Unix tty accepts as a line terminator but Windows OpenSSH ignores,
+ * so post-login never ran there even when newlines were added by hand.
+ *
+ * The Enter key sends a carriage return, so send that: every line ending
+ * becomes one, and the text always ends in one. The remote tty turns it back
+ * into the newline the shell reads, and Windows gets the character it waits
+ * for.
+ */
+internal fun postLoginAsTyped(commands: String): String {
+    val typed = commands.replace("\r\n", "\r").replace('\n', '\r')
+    if (typed.endsWith('\r')) return typed
+    return typed + '\r'
+}
+
+/**
  * Decides when a host's post-login commands may be written to the remote.
  *
  * The commands used to go out the instant the SSH shell request was sent, which

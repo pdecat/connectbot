@@ -142,6 +142,27 @@ class PostLoginWaiterTest {
     }
 
     @Test
+    fun `unterminated commands get entered`() {
+        assertThat(postLoginAsTyped("tmux attach")).isEqualTo("tmux attach\r")
+    }
+
+    @Test
+    fun `every line of multi-line commands gets entered`() {
+        assertThat(postLoginAsTyped("cd /var/www\nls -l")).isEqualTo("cd /var/www\rls -l\r")
+    }
+
+    @Test
+    fun `line feeds become carriage returns for windows openssh`() {
+        assertThat(postLoginAsTyped("dir\n")).isEqualTo("dir\r")
+        assertThat(postLoginAsTyped("dir\r\n")).isEqualTo("dir\r")
+    }
+
+    @Test
+    fun `commands already ending in a carriage return are unchanged`() {
+        assertThat(postLoginAsTyped("tmux attach\r")).isEqualTo("tmux attach\r")
+    }
+
+    @Test
     fun `empty wait for text falls back to the idle wait`() = runTest {
         val waiter = PostLoginWaiter(waitFor = "", idleMillis = 500L)
 
